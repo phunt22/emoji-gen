@@ -1,3 +1,6 @@
+# credit to Evan Zhou
+# https://github.com/EvanZhouDev/open-genmoji.git
+
 import json
 from pathlib import Path
 

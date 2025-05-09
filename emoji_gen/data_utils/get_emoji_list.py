@@ -1,3 +1,6 @@
+# credit to Evan Zhou
+# https://github.com/EvanZhouDev/open-genmoji.git
+
 import requests
 from bs4 import BeautifulSoup
 import re
