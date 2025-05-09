@@ -1,0 +1,12 @@
+# Python bytecode cache
+__pycache__/
+*.py[cod]
+
+# Emoji data/data folder
+data/
+
+# Distribution / packaging
+*.egg-info/
+
+# envs
+/venv
