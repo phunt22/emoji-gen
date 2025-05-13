@@ -1,6 +1,10 @@
 import torch
 from pathlib import Path
 from typing import Dict, Any
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
 
 CUDA_ENABLED = torch.cuda.is_available()
 DEVICE = 'cuda' if CUDA_ENABLED else 'cpu'
@@ -19,7 +23,7 @@ FINE_TUNED_MODELS_DIR = Path("fine_tuned_models")
 DEFAULT_OUTPUT_PATH = Path.cwd() / "generated_emojis"
 
 # server config
-DEFAULT_PORT = 8000
+DEFAULT_PORT = os.getenv("GCP_VM_EXTERNAL_IP")
 DEFAULT_HOST = "0.0.0.0"
 
 # fine tuning dataset from scraping

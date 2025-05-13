@@ -77,9 +77,9 @@ def list_fine_tuned_models():
         print(f"- {model}")
     
 
-def run_serve(port: int = DEFAULT_PORT):
+def run_serve(port: int = DEFAULT_PORT, host: str = "0.0.0.0"):
     """Start the inference server."""
-    print(f"Starting inference server on port {port}...")
+    print(f"Starting inference server on {host}:{port}...")
     
     # get the path to the server dir
     server_dir = os.path.join(os.path.dirname(__file__), "..", "server")
@@ -87,12 +87,12 @@ def run_serve(port: int = DEFAULT_PORT):
     # start the server with uvicorn
     try:
         server_process = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "app:app", "--host", DEFAULT_HOST, "--port", str(port)],
+            [sys.executable, "-m", "uvicorn", "app:app", "--host", host, "--port", str(port)],
             cwd=server_dir
         )
         
         print(f"Server started! Press Ctrl+C to stop.")
-        print(f"API available at: http://localhost:{port}")
+        print(f"API available at: http://{host}:{port}")
         print("Available endpoints:")
         print("  - POST /generate")
         print("  - GET /models/list")

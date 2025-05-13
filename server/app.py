@@ -9,7 +9,6 @@ from models.fine_tune import EmojiFineTuner
 
 app = FastAPI(title="Emoji Gen API", description="Generate emojis from text")
 
-
 class GenerationRequest(BaseModel):
     prompt: str
     model_choice: str
@@ -40,8 +39,6 @@ def save_image(prompt, image, output_path: Optional[str] = None) -> Path:
 
     image.save(image_path)
     return image_path
-
-
 
 
 @app.post("/generate", response_model=GenerationResponse)
