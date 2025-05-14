@@ -10,17 +10,14 @@ setup(
         "torch",
         "diffusers",
         "Pillow",
-        "requests",
-        "fastapi",
-        "uvicorn",
         "python-dotenv"
     ],
     # registers the dev_cli main function as "emoji-dev" in the CLI
     # client CLI is emoji-gen
     entry_points={
         "console_scripts": [
-            "emoji-dev=cli.dev_cli:main", ## dev cli
-            "emoji-gen=cli.client_cli:main" ## client cli
+            "emoji-dev=cli.dev_cli:main",  # dev cli
+            "emoji-gen=cli.client_cli:main"  # client cli
         ]
     }
 )

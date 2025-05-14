@@ -2,10 +2,9 @@ import torch
 from pathlib import Path
 import logging
 from typing import Optional, Dict, List
-from .cache import model_cache
+from emoji_gen.models.cache import model_cache
 
 
-# TODO use google cloud here
 class EmojiFineTuner:
     def __init__(self, base_model_id: str, output_dir: str = "fine_tuned_models"):
         self.base_model_id = base_model_id
@@ -34,8 +33,4 @@ class EmojiFineTuner:
     
     def list_fine_tuned_models(self) -> List[str]:
         """List all fine-tuned models."""
-        return [d.name for d in self.output_dir.iterdir() if d.is_dir()]
-
-
-# fine_tuner = EmojiFineTuner([BASE MODEL])
-# fine_tuner.train([EMOJI DATASET PATH], [MODEL NAME])
+        return [d.name for d in self.output_dir.iterdir() if d.is_dir()] 
