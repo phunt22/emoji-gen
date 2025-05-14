@@ -13,7 +13,6 @@ class ModelManager:
         self._initialized = False
 
     def initialize_model(self, model_name: str = DEFAULT_MODEL) -> Tuple[bool, str]:
-        """Initialize a model and set it as active."""
         try:
             # return early if we already have the model
             if self._initialized and model_name == self._model_id:
@@ -47,11 +46,8 @@ class ModelManager:
                 ).to(self._device)
             elif "flux" in model_path_lower:
                 # if FLUX model
-                self._active_model = FluxPipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
-
-                self._active_model = StableDiffusionPipeline.from_pretrained(
-                    model_path,
-                    torch_dtype=self._dtype
+                self._active_model = FluxPipeline.from_pretrained(
+                    model_path, torch_dtype=torch.bfloat16
                 ).to(self._device)
             else:
                 print(f"Cannot find model {model_path}. Make sure that you put it in MODEL_ID_MAP in config.py")
