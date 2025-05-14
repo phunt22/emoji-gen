@@ -18,7 +18,6 @@ class ModelManager:
             if self._initialized and model_name == self._model_id:
                 return True, "Model already initialized"
 
-            
             if model_name in MODEL_ID_MAP:
                 model_path = MODEL_ID_MAP[model_name]
             else:
@@ -26,16 +25,11 @@ class ModelManager:
                 if not Path(model_path).exists():
                     return False, f"Model not found: {model_name}"
 
-
-            # clean up existing model if any
-            if self._active_model is not None:
+            # if theres an existing model, clean it up
+            # check if we have the attribute first, otherwise will crash when trying to change models
+            if hasattr(self, '_active_model') and self._active_model is not None:
                 del self._active_model
                 torch.cuda.empty_cache()
-
-            # load new model
-
-            # if model_path.includes
-            # TODO conditionally load based on the model
 
             model_path_lower = str(model_path).lower()
             if "stable" in model_path_lower:
@@ -47,7 +41,8 @@ class ModelManager:
             elif "flux" in model_path_lower:
                 # if FLUX model
                 self._active_model = FluxPipeline.from_pretrained(
-                    model_path, torch_dtype=torch.bfloat16
+                    model_path, 
+                    torch_dtype=torch.bfloat16
                 ).to(self._device)
             else:
                 print(f"Cannot find model {model_path}. Make sure that you put it in MODEL_ID_MAP in config.py")
