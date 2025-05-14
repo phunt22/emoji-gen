@@ -1,0 +1,5 @@
+{
+  "models": {
+    "fine_tuned_sd-v1.5": "fine_tuned_models/fine_tuned_sd-v1.5"
+  }
+}
