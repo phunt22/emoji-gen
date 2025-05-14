@@ -1,13 +1,13 @@
 # Emoji Gen
 
-A tool to generate emojis from a prompt using Stable Diffusion models.
+A project of generating emojis and fine-tuning open source models.
 
 ## Installation
 
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/yourusername/emoji-gen.git
+   git clone https://github.com/phunt22/emoji-gen.git
    cd emoji-gen
    ```
 
@@ -23,60 +23,151 @@ A tool to generate emojis from a prompt using Stable Diffusion models.
    pip install -e .
    ```
 
+## GCP Setup and Management
+
+0. Follow these instructions to set up your GCP VM:
+   https://rayxsong.github.io/research/2024/WI/Nera/Nera-Weekly-Update-1
+
+# Keep in mind that T4 GPUs are hard to get (think about an L4, etc.) and that Spot-Instances are much cheaper and work for this project
+
+1. Initialize gcloud:
+
+   ```bash
+   gcloud init
+   # Choose option 1 to re-initialize
+   # Log into your GCP account
+   # Select your project
+   ```
+
+2. Sanity check configuration:
+
+   ```bash
+   gcloud config list
+   ```
+
+3. VM Management:
+
+   ```bash
+   # List all compute instances
+   gcloud compute instances list
+   # RUNNING = being charged, TERMINATED = not being charged
+   # Keep in mind of the instance name, which should be the format "2025****-******"
+
+   # Stop a VM instance
+   ## IMPORTANT: If you dont stop your VMs, you will get charged a lot. Make sure to stop when you are not using
+   gcloud compute instances stop instance-[INSTANCE_NAME]
+
+   # Start a VM instance
+   gcloud compute instances start instance-[INSTANCE_NAME]
+   ```
+
+4. Set up environment variables:
+   Create a `.env` file in the project root:
+
+   ```
+   # these should be obtained from
+   GCP_VM_EXTERNAL_IP=your_vm_ip
+   GCP_INSTANCE_NAME=your_instance_name
+
+   # The directory on your local computer where you want generated emojis to go
+   EMOJI_LOCAL_SYNC_DIR=/path/to/local/sync/dir
+   ```
+
+Note: Installation steps must be completed on the GCP VM and your local computer.
+
 ## Usage
 
-### Developer CLI
+#### Note: Python virtual env must be activated
 
-The developer CLI provides tools for preparing data for training and managing models:
+### User CLI (emoji-gen)
+
+Generate custom emojis with text prompts:
 
 ```bash
-# Run all preparation steps to grab the emoji data from Apple for fine-tuning
+# Basic usage
+emoji-gen cat with sunglasses
+
+# Advanced options
+emoji-gen happy face with sunglasses --steps 30 --guidance 8.0
+
+
+```
+
+Parameters:
+
+# None needed
+
+- `--steps`: Number of inference steps (default: 25)
+- `--guidance`: Guidance scale (default: 7.5)
+- `--output`: Custom output directory
+
+### Developer CLI (emoji-dev)
+
+Manage models and fine-tuning:
+
+```bash
+# List available models
+emoji-dev list
+
+# Set active model
+emoji-dev set-model sd-v1.5
+
+# Prepare emoji dataset for training
 emoji-dev prepare
 
-# List all available models
-emoji-dev list-models
+# Fine-tune a model
+emoji-dev fine-tune --model sd-v1.5 --output-name my_model
 
-# Fine-tune a model on the emoji dataset
-emoji-dev fine-tune --model sd-v1.5 --output-name my_fine_tuned_model
-
-# List all fine-tuned models
+# List fine-tuned models
 emoji-dev list-fine-tuned
+
+# Sync generated images to local machine
+emoji-dev sync
 ```
 
-After running prepare, /data will contain /emoji, which has text-image pairs. /raw contains those images with the backgrounds removed, and are named corresponding to the .name field of each emoji in emojis.json. emojis.json connects each emoji to its name and image. emojisPruned.json is the same, but skin color is removed to make the fine-tuning data simpler.
-All emoji photos are 160x160 pixels.
+### Available Models
 
-### User CLI
+Base models are defined in `emoji_gen/config.py`:
 
-The user CLI allows generating custom emojis:
-
-```bash
-# Generate an emoji with default settings
-emoji-gen "happy cat"
-
-# Generate with specific model and parameters
-emoji-gen "happy cat" --model sd-v1.5 --steps 30 --guidance 8.0
-
-# Save to a specific output directory
-emoji-gen "happy cat" --output ./my_emojis
+```python
+MODEL_ID_MAP = {
+    "sd-v1.5": "runwayml/stable-diffusion-v1-5",
+    # Add more models here
+}
 ```
 
-## Running on a VM
+Fine-tuned models are stored in the `fine_tuned_models` directory and are automatically detected by the system.
 
-This project is designed to run directly on a VM with GPU support. All operations are performed locally without a client-server architecture.
+## Development
 
-## Cleaning Python Cache Files
+### Code Structure
 
-If you see `__pycache__` directories or `.pyc` files, you can clean them up with:
+```
+emoji-gen/
+├── emoji_gen/          # Core package
+│   ├── models/         # Model management and fine-tuning
+│   ├── data_utils/     # Dataset handling
+│   └── generation.py   # Emoji generation logic
+├── cli/               # Command-line Interfaces
+├── data/              # Dataset storage
+└── fine_tuned_models/ # Fine-tuned model storage
+```
+
+### Cleaning Python Cache
+
+Remove cache files:
 
 ```bash
-# Remove all __pycache__ directories
+# Remove __pycache__ directories
 find . -type d -name "__pycache__" -exec rm -r {} +
 
-# Remove all .pyc files
+# Remove .pyc files
 find . -name "*.pyc" -delete
 ```
 
-These files are ignored by git anyways, but are a little annoying in the code editor.
-You can hide them in VSCode by going to Settings, searching "files:exclude", and adding the pattern "\_\_/pycache\*\*"
-I also added "\*\*.egg_info"
+VSCode settings to hide cache:
+
+- Add `"**/__pycache__**"` to `files:exclude`
+- Add `"**/*.egg_info"` to `files:exclude`
+
+## Acknowledgments
