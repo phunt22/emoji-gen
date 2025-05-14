@@ -1,6 +1,6 @@
 from pathlib import Path
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, FluxPipeline
 from typing import Optional, Dict, Tuple
 from emoji_gen.config import MODEL_ID_MAP, FINE_TUNED_MODELS_DIR, DEFAULT_MODEL
 
@@ -34,10 +34,28 @@ class ModelManager:
                 torch.cuda.empty_cache()
 
             # load new model
-            self._active_model = StableDiffusionPipeline.from_pretrained(
-                model_path,
-                torch_dtype=self._dtype
-            ).to(self._device)
+
+            # if model_path.includes
+            # TODO conditionally load based on the model
+
+            model_path_lower = str(model_path).lower()
+            if "stable" in model_path_lower:
+                # if SD model
+                self._active_model = StableDiffusionPipeline.from_pretrained(
+                    model_path,
+                    torch_dtype=self._dtype
+                ).to(self._device)
+            elif "flux" in model_path_lower:
+                # if FLUX model
+                self._active_model = FluxPipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+
+                self._active_model = StableDiffusionPipeline.from_pretrained(
+                    model_path,
+                    torch_dtype=self._dtype
+                ).to(self._device)
+            else:
+                print(f"Cannot find model {model_path}. Make sure that you put it in MODEL_ID_MAP in config.py")
+                return
 
             self._model_id = model_name
             self._initialized = True

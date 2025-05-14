@@ -12,7 +12,8 @@ setup(
         "Pillow",
         "python-dotenv",
         "flask",    
-        "requests"
+        "requests",
+        "bs4"
     ],
     # registers the dev_cli main function as "emoji-dev" in the CLI
     # client CLI is emoji-gen

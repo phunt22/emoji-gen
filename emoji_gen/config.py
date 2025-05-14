@@ -12,7 +12,8 @@ DTYPE = torch.float16 if CUDA_ENABLED else torch.float32
 DEFAULT_MODEL = 'sd-v1.5'
 MODEL_ID_MAP = {
     "sd-v1.5": "runwayml/stable-diffusion-v1-5",
-    "test": "test_model_fake_model",
+    "FLUX.1": "black-forest-labs/FLUX.1-dev",
+    # "test": "test_model_fake_model",
     # ADD MODELS HERE!
 }
 
