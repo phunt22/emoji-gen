@@ -16,7 +16,6 @@ SERVER_STATE = {
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Simple health check endpoint."""
     return jsonify({
         "status": "ok",
         "model": SERVER_STATE["model_name"],
@@ -25,7 +24,6 @@ def health_check():
 
 @app.route('/set-model', methods=['POST'])
 def set_model():
-    """Set a new active model."""
     data = request.json
     if not data or 'model_name' not in data:
         return jsonify({"status": "error", "error": "Missing model_name parameter"}), 400
@@ -34,17 +32,20 @@ def set_model():
     try:
         success, message = model_manager.initialize_model(model_name)
         if success:
-            SERVER_STATE["model"] = model_manager.get_active_model()
+            model = model_manager.get_active_model()
+            if model is None:
+                return jsonify({"status": "error", "error": "Failed to load model"}), 500
+            
+            SERVER_STATE["model"] = model
             SERVER_STATE["model_name"] = model_name
             return jsonify({"status": "success", "message": message})
         else:
             return jsonify({"status": "error", "error": message}), 400
     except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        return jsonify({"status": "error", "error": str(e)}), 50
 
 @app.route('/generate', methods=['POST'])
 def generate_emoji():
-    """Generate an emoji from a text prompt."""
     data = request.json
     if not data or 'prompt' not in data:
         return jsonify({"status": "error", "error": "Missing prompt parameter"}), 400

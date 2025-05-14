@@ -51,7 +51,7 @@ class ModelManager:
                 ).to(self._device)
             else:
                 print(f"Cannot find model {model_path}. Make sure that you put it in MODEL_ID_MAP in config.py")
-                return
+                return False, f"Cannot find model {model_path}. Check MODEL_ID_MAP in config.py"
 
             self._model_id = model_name
             self._initialized = True
