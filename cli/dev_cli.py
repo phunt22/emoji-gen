@@ -51,6 +51,9 @@ def main():
     # Server status command
     status_parser = subparsers.add_parser("server-status", help="Check server status")
     
+    # Add sync command
+    sync_parser = subparsers.add_parser("sync", help="Sync generated images to local machine")
+    
     args = parser.parse_args()
     
     if args.command == "list-models":
@@ -108,6 +111,9 @@ def main():
             print(f"Device: {server_info['device']}")
         else:
             print("Server is not running")
+            
+    elif args.command == "sync":
+        sync_images()
             
     else:
         parser.print_help()
@@ -185,7 +191,7 @@ def sync_images():
             'gcloud',
             'compute',
             'scp',
-            f'instance-{instance_name}:~/emoji-gen/generated_emojis/*.png',
+            f'instance-{instance_name}:~/generated_emojis/*.png',
             str(local_sync_dir)
         ]
         subprocess.run(scp_cmd, check=True)
