@@ -10,7 +10,9 @@ setup(
         "torch",
         "diffusers",
         "Pillow",
-        "python-dotenv"
+        "python-dotenv",
+        "flask",    
+        "requests"
     ],
     # registers the dev_cli main function as "emoji-dev" in the CLI
     # client CLI is emoji-gen
