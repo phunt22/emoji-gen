@@ -10,11 +10,11 @@ from emoji_gen.config import (
 
 class ModelCache:
     def __init__(self):
-        self._model = None  # can only be one due to memory constraints
+        self._model = None  
         self._model_id = None
         self.MODELS = {}
         
-        # Load saved model list if it exists
+        # load saved model list (if any)
         self._load_model_list()
 
     def _load_model_list(self):
@@ -65,6 +65,13 @@ class ModelCache:
     
     def get_current_model_id(self) -> Optional[str]:
         return self._model_id
+
+    def cleanup(self):
+        if self._model is not None:
+            del self._model
+            torch.cuda.empty_cache()
+        self._model = None
+        self._model_id = None
 
 # create a global model cache instance
 model_cache = ModelCache() 

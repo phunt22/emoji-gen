@@ -2,25 +2,26 @@ from pathlib import Path
 from datetime import datetime
 from PIL import Image
 from typing import Optional
-from emoji_gen.models.cache import model_cache
+from emoji_gen.models.model_manager import model_manager
 import torch
 
+
+# generates an emoji from a prompt using the active model (from model_manager specified in dev_cli)
 def generate_emoji(
     prompt: str,
-    model_choice: str,
     output_path: Optional[str] = None,
     num_inference_steps: int = 25,
     guidance_scale: float = 7.5,
     num_images: int = 1
 ):
-    """Generate an emoji based on the prompt using the specified model."""
+   
     try:
-        # Get model from cache
-        model = model_cache.get_model(model_choice)
+        # get model from the cache (inits default if needed)
+        model = model_manager.get_active_model()
         if not model:
-            return {"status": "error", "error": f"Model {model_choice} not found"}
+            return {"status": "error", "error": "Failed to initialize model"}
         
-        # Generate image
+        # generate image
         result = model(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
@@ -28,7 +29,7 @@ def generate_emoji(
             num_images_per_prompt=num_images
         )
         
-        # Save image
+        # save image
         image_path = save_image(prompt, result.images[0], output_path)
         return {"status": "success", "image_path": str(image_path)}
     
@@ -50,8 +51,4 @@ def save_image(prompt, image, output_path: Optional[str] = None) -> Path:
 
 def list_available_models():
     """List all available models with their information."""
-    return {
-        "models": model_cache.list_models(),
-        "current_model": model_cache.get_current_model_id(),
-        "gpu_available": torch.cuda.is_available(),
-    } 
+    return model_manager.list_available_models() 
