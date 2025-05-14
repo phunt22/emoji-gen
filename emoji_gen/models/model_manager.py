@@ -1,7 +1,7 @@
 from pathlib import Path
 import torch
 from diffusers import StableDiffusionPipeline, FluxPipeline
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Union
 from emoji_gen.config import MODEL_ID_MAP, FINE_TUNED_MODELS_DIR, DEFAULT_MODEL
 
 class ModelManager:
@@ -59,9 +59,10 @@ class ModelManager:
 
         except Exception as e:
             self.cleanup()
+            print(f"Error initializing model: {str(e)}")
             return False, f"Error initializing model: {str(e)}"
 
-    def get_active_model(self) -> Optional[StableDiffusionPipeline]:
+    def get_active_model(self) -> Optional[Union[FluxPipeline, StableDiffusionPipeline]]:
         """Get the currently active model."""
         if not self._initialized:
             success, _ = self.initialize_model()  # try to initialize default model at the start
