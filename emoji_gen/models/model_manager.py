@@ -6,7 +6,7 @@ from emoji_gen.config import MODEL_ID_MAP, FINE_TUNED_MODELS_DIR, DEFAULT_MODEL
 
 class ModelManager:
     def __init__(self):
-        self._active_model = None
+        self.active_model = None
         self._model_id = None
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._dtype = torch.float16 if torch.cuda.is_available() else torch.float32
@@ -27,20 +27,20 @@ class ModelManager:
 
             # if theres an existing model, clean it up
             # check if we have the attribute first, otherwise will crash when trying to change models
-            if hasattr(self, '_active_model') and self._active_model is not None:
-                del self._active_model
+            if hasattr(self, '_active_model') and self.active_model is not None:
+                del self.active_model
                 torch.cuda.empty_cache()
 
             model_path_lower = str(model_path).lower()
             if "stable" in model_path_lower:
                 # if SD model
-                self._active_model = StableDiffusionPipeline.from_pretrained(
+                self.active_model = StableDiffusionPipeline.from_pretrained(
                     model_path,
                     torch_dtype=self._dtype
                 ).to(self._device)
             elif "flux" in model_path_lower:
                 # if FLUX model
-                self._active_model = FluxPipeline.from_pretrained(
+                self.active_model = FluxPipeline.from_pretrained(
                     model_path, 
                     torch_dtype=torch.bfloat16
                 ).to(self._device)
@@ -63,14 +63,14 @@ class ModelManager:
             success, _ = self.initialize_model()  # try to initialize default model at the start
             if not success:
                 return None
-        return self._active_model
+        return self.active_model
 
     def cleanup(self):
         """Clean up resources."""
-        if self._active_model is not None:
-            del self._active_model
+        if self.active_model is not None:
+            del self.active_model
             torch.cuda.empty_cache()
-        self._active_model = None
+        self.active_model = None
         self._model_id = None
         self._initialized = False
 
