@@ -42,7 +42,7 @@ def set_model():
         else:
             return jsonify({"status": "error", "error": message}), 400
     except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 50
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 @app.route('/generate', methods=['POST'])
 def generate_emoji():
