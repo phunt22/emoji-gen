@@ -10,8 +10,8 @@ import torch
 def generate_emoji(
     prompt: str,
     output_path: Optional[str] = None,
-    num_inference_steps: int = 25,
-    guidance_scale: float = 7.5,
+    num_inference_steps: int = 40,
+    guidance_scale: float = 10,
     num_images: int = 1 ## maybe not needed ???
 ):
    

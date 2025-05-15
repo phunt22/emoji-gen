@@ -31,10 +31,14 @@ def main():
             output_path=args.output
         )
         
-        if result["status"] == "success":
-            print(f"Generated emoji saved to: {result['image_path']}")
+        if result and "status" in result and result["status"] == "success":
+            if "image_path" in result:
+                print(f"Generated emoji saved to: {result['image_path']}")
+            else:
+                print("Successfully generated image but path not returned")
         else:
-            print(f"Error: {result['error']}")
+            error_msg = result.get("error", "Unknown error") if result else "Empty response from server"
+            print(f"Error: {error_msg}")
             print("Falling back to local generation...")
             generate_locally(prompt, args)
     else:
@@ -46,13 +50,22 @@ def main():
 
 def generate_locally(prompt, args):
     """Generate emoji locally using the model directly."""
+    print("Loading pipeline components...")
     result = generate_emoji(
         prompt=prompt,
         num_inference_steps=args.steps,
         guidance_scale=args.guidance,
         output_path=args.output
     )
-    print(f"Generated emoji saved to: {result}")
+    
+    if result and "status" in result:
+        if result["status"] == "success" and "image_path" in result:
+            print(f"Generated emoji saved to: {result['image_path']}")
+        else:
+            error_msg = result.get("error", "Unknown error")
+            print(f"Error generating emoji: {error_msg}")
+    else:
+        print(f"Generated emoji saved to: {result}")
 
 if __name__ == "__main__":
     main() 

@@ -155,8 +155,6 @@ def run_prepare_emojis():
     print("✅ Finished preparing emoji data")
 
 def sync_images():
-    """Sync generated images from VM to local machine."""
-
 
     # get VM host from environment variable
     vm_host = os.getenv('GCP_VM_EXTERNAL_IP')
@@ -191,7 +189,9 @@ def sync_images():
             'gcloud',
             'compute',
             'scp',
+            # f'instance-{instance_name}:~/emoji-gen/generated_emojis/*.png',
             f'instance-{instance_name}:~/generated_emojis/*.png',
+
             str(local_sync_dir)
         ]
         subprocess.run(scp_cmd, check=True)

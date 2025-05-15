@@ -13,7 +13,10 @@ setup(
         "python-dotenv",
         "flask",    
         "requests",
-        "bs4"
+        "bs4",
+        ## FLUX installation dependency
+        "protobuf", 
+        "sentencepiece",
     ],
     # registers the dev_cli main function as "emoji-dev" in the CLI
     # client CLI is emoji-gen

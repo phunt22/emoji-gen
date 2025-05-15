@@ -51,6 +51,15 @@ def generate_emoji_remote(prompt, num_inference_steps=25, guidance_scale=7.5, nu
                 "output_path": output_path
             }
         )
-        return response.json()
+        
+        # Check if response is valid JSON
+        try:
+            data = response.json()
+            if data is None:
+                return {"status": "error", "error": "Server returned None response"}
+            return data
+        except ValueError:
+            return {"status": "error", "error": "Server returned invalid JSON response"}
+            
     except requests.exceptions.ConnectionError:
         return {"status": "error", "error": "Could not connect to server"} 
