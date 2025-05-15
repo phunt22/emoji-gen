@@ -118,8 +118,8 @@ def run_benchmark(model_name, output_name, num_steps=40, guidance_scale=9, force
     for i, prompt in enumerate(prompts, 1):
         print(f"Generating emoji {i}/{len(prompts)}: {prompt}")
         
-        if server_running and not force_local:
-            print(f"Using server with model: {server_info['model']}")
+        if server_running and not force_local and server_info is not None:
+            print(f"Using server with model: {server_info.get('model', 'unknown')}")
             result = generate_emoji_remote(
                 prompt=prompt,
                 num_inference_steps=num_steps,

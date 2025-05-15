@@ -29,6 +29,10 @@ def generate_emoji(
             num_images_per_prompt=num_images ## maybe not needed ???
         )
         
+        # Check if we got any images
+        if not result or not hasattr(result, 'images') or not result.images:
+            return {"status": "error", "error": "No images were generated"}
+        
         # save image
         image_path = save_image(prompt, result.images[0], output_path)
         return {"status": "success", "image_path": str(image_path)}

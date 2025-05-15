@@ -52,6 +52,10 @@ def generate_emoji_remote(prompt, num_inference_steps=25, guidance_scale=7.5, nu
             }
         )
         
+        # Check response status code first
+        if response.status_code != 200:
+            return {"status": "error", "error": f"Server returned status code {response.status_code}"}
+        
         # Check if response is valid JSON
         try:
             data = response.json()
