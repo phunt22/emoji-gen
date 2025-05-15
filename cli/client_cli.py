@@ -3,6 +3,9 @@ from emoji_gen.generation import generate_emoji
 from emoji_gen.server_client import is_server_running, generate_emoji_remote
 import os
 from pathlib import Path
+from datetime import datetime
+
+BENCHMARK_PROMPTS_FILE = Path(__file__).parent / "prompts" / "benchmark_prompts.txt"
 
 def main():
     parser = argparse.ArgumentParser(description="Generate emojis from text prompts")
@@ -11,8 +14,15 @@ def main():
     parser.add_argument("--steps", type=int, default=25, help="Number of inference steps")
     parser.add_argument("--guidance", type=float, default=7.5, help="Guidance scale")
     parser.add_argument("--local", action="store_true", help="Force local generation even if server is available")
+    parser.add_argument("--benchmark", type=str, default="sd-v1.5", help="Model to use")
+    parser.add_argument("--name", type=str, help="Name of the output folder for the benchmark")
     
     args = parser.parse_args()
+
+    if args.benchmark:
+        name = args.name if args.name else f"benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        run_benchmark(args.benchmark, name)
+        return
     
     prompt = " ".join(args.prompt)
     if not prompt:
@@ -66,6 +76,28 @@ def generate_locally(prompt, args):
             print(f"Error generating emoji: {error_msg}")
     else:
         print(f"Generated emoji saved to: {result}")
+
+def run_benchmark(benchmark_name, guidance_scale = 9, num_steps = 40):
+
+    benchmark_dir = Path('generated_emojis') / benchmark_name
+    benchmark_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with open(BENCHMARK_PROMPTS_FILE, 'r') as f:
+            prompts = [line.strip() for line in f.readlines()]
+    except Exception as e:
+        print(f"Error reading benchmark prompts file: {e}")
+
+    for i, prompts in enumerate(prompts, 1):
+        print(f"Running benchmark {i} of {len(prompts)}")
+        result = generate_emoji_remote(
+            prompt=prompts,
+            num_inference_steps=num_steps,
+            guidance_scale=guidance_scale,
+            output_path=output_path
+        )
+
+    
 
 if __name__ == "__main__":
     main() 
