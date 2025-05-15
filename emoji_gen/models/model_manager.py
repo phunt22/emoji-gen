@@ -1,6 +1,6 @@
 from pathlib import Path
 import torch
-from diffusers import StableDiffusionPipeline, FluxPipeline
+from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline, FluxPipeline
 from typing import Optional, Dict, Tuple, Union
 from emoji_gen.config import MODEL_ID_MAP, FINE_TUNED_MODELS_DIR, DEFAULT_MODEL
 
@@ -33,11 +33,22 @@ class ModelManager:
 
             model_path_lower = str(model_path).lower()
             if "stable" in model_path_lower:
-                # if SD model
-                self.active_model = StableDiffusionPipeline.from_pretrained(
-                    model_path,
-                    torch_dtype=self._dtype
-                ).to(self._device)
+                # Need to specically handle the SD-XL model :/
+                if "xl" in model_path_lower:
+                    print("Loading SD-XL model...")
+                    self.active_model = StableDiffusionXLPipeline.from_pretrained(
+                        model_path,
+                        torch_dtype=self._dtype,
+                        use_safetensors=True,
+                        variant="fp16" if self._device == "cuda" else None
+                    ).to(self._device)
+                else:
+                    # Regular SD models
+                    print("Loading standard SD model...")
+                    self.active_model = StableDiffusionPipeline.from_pretrained(
+                        model_path,
+                        torch_dtype=self._dtype
+                    ).to(self._device)
             elif "flux" in model_path_lower:
                 # if FLUX model
                 self.active_model = FluxPipeline.from_pretrained(
