@@ -69,13 +69,15 @@ class EmojiFineTuner:
         val_data_path: str,
         model_name: str,
         lora_rank: int = 4,
+        lora_alpha: int = 32,
+        lora_dropout: float = 0.1,
         learning_rate: float = 1e-4,
         num_epochs: int = 100,
         batch_size: int = 1,
         gradient_accumulation_steps: int = 4,
         mixed_precision: str = "fp16",
         seed: int = 42,
-    ) -> str:
+    ) -> tuple[str, float]:
         """
         Fine-tune model using LoRA (Low-Rank Adaptation)
         
@@ -84,6 +86,8 @@ class EmojiFineTuner:
             val_data_path: Path to validation data JSON
             model_name: Name for the fine-tuned model
             lora_rank: Rank for LoRA adaptation
+            lora_alpha: Alpha parameter for LoRA scaling
+            lora_dropout: Dropout probability for LoRA layers
             learning_rate: Learning rate for training
             num_epochs: Number of training epochs
             batch_size: Batch size for training
@@ -92,7 +96,7 @@ class EmojiFineTuner:
             seed: Random seed for reproducibility
             
         Returns:
-            Path to the saved model
+            Tuple of (path to the saved model, best validation loss)
         """
         # Set random seed
         torch.manual_seed(seed)
@@ -114,9 +118,9 @@ class EmojiFineTuner:
         # Create LoRA configuration
         lora_config = LoraConfig(
             r=lora_rank,
-            lora_alpha=lora_rank,
+            lora_alpha=lora_alpha,
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
-            lora_dropout=0.1,
+            lora_dropout=lora_dropout,
             bias="none",
         )
         
@@ -243,7 +247,7 @@ class EmojiFineTuner:
                 
                 self.logger.info(f"Saved best model to {output_path}")
         
-        return str(output_path)
+        return str(output_path), best_val_loss
 
     def train_dreambooth(
         self,

@@ -98,7 +98,7 @@ def tune_hyperparameters(
             tuner = EmojiFineTuner(base_model)
             
             if method == "lora":
-                val_loss = tuner.train_lora(
+                output_path, val_loss = tuner.train_lora(
                     train_data_path=train_data_path,
                     val_data_path=val_data_path,
                     model_name="tuned_model",
