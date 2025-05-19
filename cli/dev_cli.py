@@ -45,11 +45,11 @@ def prepare_and_split_data(output_dir: str = "data/splits"):
 
 def handle_finetune(args):
     try:
-        fine_tuner = EmojiFineTuner(base_model_id=args.base_model)
+        fine_tuner = EmojiFineTuner(base_model_id=args.model)
 
         # using the fixed data paths to the folders
-        train_data_path = "data/splits/train_emoji_data.json"
-        val_data_path = "data/splits/val_emoji_data.json"
+        train_data_path = TRAIN_DATA_PATH
+        val_data_path = VAL_DATA_PATH
         
         if args.method == "lora":
             output_path = fine_tuner.train_lora(
@@ -61,7 +61,7 @@ def handle_finetune(args):
                 num_epochs=args.epochs,
                 batch_size=args.batch_size,
                 gradient_accumulation_steps=args.gradient_accumulation_steps,
-                output_dir=args.output_dir,
+                output_dir="fine_tuned_models",
             )
         elif args.method == "dreambooth":
             output_path = fine_tuner.train_dreambooth(
@@ -74,7 +74,7 @@ def handle_finetune(args):
                 num_epochs=args.epochs,
                 batch_size=args.batch_size,
                 gradient_accumulation_steps=args.gradient_accumulation_steps,
-                output_dir=args.output_dir,
+                output_dir="fine_tuned_models",
             )
         elif args.method == "full":
             output_path = fine_tuner.train_full(
@@ -85,7 +85,7 @@ def handle_finetune(args):
                 num_epochs=args.epochs,
                 batch_size=args.batch_size,
                 gradient_accumulation_steps=args.gradient_accumulation_steps,
-                output_dir=args.output_dir,
+                output_dir="fine_tuned_models",
             )
         else:
             raise ValueError(f"Unknown fine-tuning method: {args.method}")
@@ -106,16 +106,16 @@ def handle_set_model(args):
     server_running, server_info = is_server_running()
     if server_running:
         print(f"Server is running with model: {server_info['model']}")
-        result = set_model_remote(args.model_name)
+        result = set_model_remote(args.model)
         if result["status"] == "success":
-            print(f"Successfully set model to {args.model_name} on server")
+            print(f"Successfully set model to {args.model} on server")
         else:
             print(f"Error: {result['error']}")
     else:
         print("Server not running, setting model locally...")
-        success, message = model_manager.initialize_model(args.model_name)
+        success, message = model_manager.initialize_model(args.model)
         if success:
-            print(f"Successfully set model to {args.model_name}")
+            print(f"Successfully set model to {args.model}")
         else:
             print(f"Error: {message}")
 
