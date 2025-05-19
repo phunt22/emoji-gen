@@ -139,12 +139,13 @@ def tune_hyperparameters(
                     max_t=max_epochs,
                     grace_period=1
                 ),
-                search_alg=HyperOptSearch(metric="val_loss", mode="min"),
+                search_alg=HyperOptSearch(metric="val_loss", mode="min"), ## USE HYPEROPT
             ),
             run_config=ray.air.RunConfig(
-                local_dir=str(output_dir),
+                storage_path=str(output_dir),
                 verbose=1,
             ),
+            
             param_space=config,
         )
         
