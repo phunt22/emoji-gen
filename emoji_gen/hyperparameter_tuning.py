@@ -14,6 +14,12 @@ from ray.air import session
 from emoji_gen.models import EmojiFineTuner
 from emoji_gen.config import get_model_path
 
+from emoji_gen.config import *
+from emoji_gen.config import {
+    TRAIN_DATA_PATH,
+    VAL_DATA_PATH,
+}
+
 def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str, Any]:
     """Get the search space for a specific fine-tuning method.
     
@@ -172,8 +178,8 @@ def tune_hyperparameters(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     best_params = tune_hyperparameters(
-        train_data_path="data/splits/train_emoji_data.json",
-        val_data_path="data/splits/val_emoji_data.json",
+        train_data_path=TRAIN_DATA_PATH,
+        val_data_path=VAL_DATA_PATH,
         method="lora"  # default to lora for now
     )
     print("Best parameters:", json.dumps(best_params, indent=2)) 
