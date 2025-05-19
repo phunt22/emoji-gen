@@ -12,6 +12,7 @@ from ray.tune.search.hyperopt import HyperOptSearch
 from ray.air import session
 
 from emoji_gen.models import EmojiFineTuner
+from emoji_gen.config import get_model_path
 
 def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str, Any]:
     """Get the search space for a specific fine-tuning method.
@@ -95,7 +96,8 @@ def tune_hyperparameters(
     # define training function
     def train_func(config):
         try:
-            tuner = EmojiFineTuner(base_model)
+            model_id = get_model_path(base_model)
+            tuner = EmojiFineTuner(model_id)
             
             if method == "lora":
                 output_path, val_loss = tuner.train_lora(
