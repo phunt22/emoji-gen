@@ -12,8 +12,9 @@ DTYPE = torch.float16 if CUDA_ENABLED else torch.float32
 DEFAULT_MODEL = 'sd-v1.5'
 MODEL_ID_MAP = {
     "sd-v1.5": "runwayml/stable-diffusion-v1-5",
+    "SD-XL": "stabilityai/stable-diffusion-xl-base-1.0",
     "FLUX.1": "black-forest-labs/FLUX.1-dev",
-    "SD-XL": "stabilityai/stable-diffusion-xl-base-1.0"
+    
     # "test": "test_model_fake_model",
     # ADD MODELS HERE!
 }
@@ -26,7 +27,22 @@ DEFAULT_OUTPUT_PATH = Path.cwd() / "generated_emojis"
 # Fine-tuning dataset defaults
 DEFAULT_DATASET = 'data/emojisPruned.json'
 
-# Helper methods
+# Data paths
+DATA_DIR = Path("data")
+SPLITS_DIR = DATA_DIR / "splits"
+TRAIN_DATA_PATH = str(SPLITS_DIR / "train_emoji_data.json")
+VAL_DATA_PATH = str(SPLITS_DIR / "val_emoji_data.json")
+TEST_DATA_PATH = str(SPLITS_DIR / "test_emoji_data.json")
+EMOJI_DATA_PATH = str(DATA_DIR / "emojisPruned.json")
+
+# Fine-tuning data split ratios, etc.
+TRAIN_RATIO = 0.8
+VAL_RATIO = 0.1
+TEST_RATIO = 0.1
+DATA_SPLIT_SEED = int(os.getenv('DATA_SPLIT_SEED', '42'))
+MODELS_DIR = Path("models")
+
+# helper methods
 def get_model_path(model_name: str) -> str:
     """Get the full model path for a given model name."""
     if model_name in MODEL_ID_MAP:

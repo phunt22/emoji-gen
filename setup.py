@@ -2,14 +2,27 @@ from setuptools import setup, find_packages
 
 # running some setup and configuring the CLIs
 setup(
-    name="emoji-gen",
+    name="emoji_gen",
     version="0.1.0",
     packages=find_packages(),
     # auto install dependencies
     install_requires=[
         "torch",
         "diffusers",
-        "Pillow",
+        "transformers",
+        "accelerate",
+        "safetensors",
+        "pillow",
+        "numpy",
+        "tqdm",
+        
+        # fine tuning dependencies
+        "peft",  # For LoRA
+        "ray[tune]",  # hyperparam tuning
+        
+        # web/server dependencies
+        "flask",
+        "flask-cors",
         "python-dotenv",
         "flask",    
         "requests",
@@ -25,5 +38,6 @@ setup(
             "emoji-dev=cli.dev_cli:main",  # dev cli
             "emoji-gen=cli.client_cli:main"  # client cli
         ]
-    }
+    },
+    python_requires=">=3.8",
 )

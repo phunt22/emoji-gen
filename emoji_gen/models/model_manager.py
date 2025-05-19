@@ -85,7 +85,7 @@ class ModelManager:
         self._model_id = None
         self._initialized = False
 
-    def list_available_models(self) -> Dict[str, Dict]:
+    def get_available_models(self) -> Dict[str, Dict]:
         """List all available models and their information."""
         models = {}
         

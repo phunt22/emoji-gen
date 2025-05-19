@@ -1,161 +1,149 @@
 import argparse
 from pathlib import Path
-from emoji_gen.models.model_manager import model_manager
-from emoji_gen.data_utils import get_emoji_list, prune_emoji_list, download_emojis
-from emoji_gen.models.fine_tune import EmojiFineTuner
-from emoji_gen.config import DEFAULT_MODEL, DEFAULT_DATASET
-from emoji_gen.generation import list_available_models
-from emoji_gen.server_client import is_server_running, set_model_remote
-import torch
 import os
 import subprocess
 from dotenv import load_dotenv
-import sys
-import importlib.util
+import random
+import json
+import logging
+import time
+from datetime import datetime
+
+from emoji_gen.data_utils import get_emoji_list, prune_emoji_list, download_emojis
+from emoji_gen.models.fine_tuning import EmojiFineTuner
+from emoji_gen.data_utils.split_data import split_emoji_data
+from emoji_gen.models.model_manager import model_manager
+from emoji_gen.server_client import is_server_running, set_model_remote
 from emoji_gen.server import start_server
+from emoji_gen.models import EmojiGenerator
+from emoji_gen.hyperparameter_tuning import tune_hyperparameters
+from emoji_gen.config import (
+    DEFAULT_MODEL,
+    EMOJI_DATA_PATH,
+    DATA_SPLITS_DIR,
+    TRAIN_DATA_PATH,
+    VAL_DATA_PATH
+)
 
 # load env
 load_dotenv()
 
-def main():
-    parser = argparse.ArgumentParser(description="Emoji Generation Developer Tools")
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-    
-    # List models command
-    list_parser = subparsers.add_parser("list-models", help="List available models")
-    
-    # Set model command
-    set_model_parser = subparsers.add_parser("set-model", help="Set the active model")
-    set_model_parser.add_argument("model_name", type=str, help="Name of the model to set as active")
-    
-    # Prepare dataset command
-    prepare_parser = subparsers.add_parser("prepare", help="Prepare emoji dataset for fine-tuning")
-    
-    # Fine-tune command
-    finetune_parser = subparsers.add_parser("finetune", help="Fine-tune a model on emoji dataset")
-    finetune_parser.add_argument("--base-model", type=str, required=True, help="Base model to fine-tune")
-    finetune_parser.add_argument("--dataset", type=str, required=True, help="Path to prepared dataset")
-    finetune_parser.add_argument("--output", type=str, required=True, help="Output directory for fine-tuned model")
-    finetune_parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
-    
-    # List fine-tuned models command
-    list_ft_parser = subparsers.add_parser("list-finetuned", help="List fine-tuned models")
-    
-    # Start server command
-    server_parser = subparsers.add_parser("start-server", help="Start the emoji generation server")
-    server_parser.add_argument("--model", type=str, default="sd-v1.5", help="Model ID to use for generation (default: sd-v1.5)")
-    server_parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to run the server on")
-    server_parser.add_argument("--port", type=int, default=5000, help="Port to run the server on")
-    server_parser.add_argument("--debug", action="store_true", help="Run in debug mode")
-    
-    # Server status command
-    status_parser = subparsers.add_parser("server-status", help="Check server status")
-    
-    # Add sync command
-    sync_parser = subparsers.add_parser("sync", help="Sync generated images to local machine")
-    
-    args = parser.parse_args()
-    
-    if args.command == "list-models":
-        models = model_manager.list_available_models()
-        print("Available models:")
-        for model in models:
-            print(f"- {model}")
-            
-    elif args.command == "set-model":
-        # Check if server is running
-        server_running, server_info = is_server_running()
-        if server_running:
-            print(f"Server is running with model: {server_info['model']}")
-            result = set_model_remote(args.model_name)
-            if result["status"] == "success":
-                print(f"Successfully set model to {args.model_name} on server")
-            else:
-                print(f"Error: {result['error']}")
-        else:
-            print("Server not running, setting model locally...")
-            success, message = model_manager.initialize_model(args.model_name)
-            if success:
-                print(f"Successfully set model to {args.model_name}")
-            else:
-                print(f"Error: {message}")
-                
-    elif args.command == "prepare-dataset":
-       run_prepare_emojis()
-        
-    elif args.command == "finetune":
-        print(f"Starting fine-tuning of {args.base_model} on dataset {args.dataset}")
-        fine_tuner = EmojiFineTuner(args.base_model)
-        output_path = fine_tuner.train(args.dataset, args.output, num_epochs=args.epochs)
-        print(f"Fine-tuning complete. Model saved to {output_path}")
-        
-    elif args.command == "list-finetuned":
-        fine_tuner = EmojiFineTuner(DEFAULT_MODEL)
-        models = fine_tuner.list_fine_tuned_models()
-        if not models:
-            print("No fine-tuned models found")
-        else:
-            print(f"{len(models)} Fine-tuned models:")
-            for model in models:
-                print(f"- {model}")
-            
-    elif args.command == "start-server":
-        print(f"Starting server with model {args.model}...")
-        start_server(args.model, args.host, args.port, args.debug)
-        
-    elif args.command == "server-status":
-        server_running, server_info = is_server_running()
-        if server_running:
-            print(f"Server is running")
-            print(f"Active model: {server_info['model']}")
-            print(f"Device: {server_info['device']}")
-        else:
-            print("Server is not running")
-            
-    elif args.command == "sync":
-        sync_images()
-            
-    else:
-        parser.print_help()
-        sys.exit(1)
-
-def start_server(model_id, host, port, debug):
-    """Start the emoji generation server."""
-    server_running, server_info = is_server_running(f"http://{host}:{port}")
-    if server_running:
-        print(f"Server is already running at http://{host}:{port}")
-        print(f"Current model: {server_info['model']}")
-        return
-    
-    # Import server module
-    try:
-        from emoji_gen.server import start_server as run_server
-        run_server(model_id, host, port, debug)
-    except ImportError:
-        print("Server module not found. Make sure you have Flask installed.")
-        print("You can install it with: pip install flask")
-        
-def check_server_status():
-    """Check if the server is running."""
-    server_running, server_info = is_server_running()
-    if server_running:
-        print(f"Server is running with model: {server_info['model']}")
-        print(f"Device: {server_info['device']}")
-    else:
-        print("Server is not running. Start it with 'emoji-dev start-server'")
-
-def run_prepare_emojis():
-    """Prepare emoji dataset for training."""
+def prepare_and_split_data(output_dir: str = "data/splits"):
+    """Prepare emoji dataset and split it into train/val/test sets"""
     print("Grabbing emoji list...")
     get_emoji_list()
     print("Pruning emoji list...")
     prune_emoji_list()
     print("Downloading emoji list...")
     download_emojis()
-    print("✅ Finished preparing emoji data")
+    print("Splitting data...")
+    split_emoji_data(
+        data_path="data/emojisPruned.json",
+        output_dir=output_dir,
+        # seed and split are in method
+    )
 
-def sync_images():
 
+def handle_finetune(args):
+    try:
+        fine_tuner = EmojiFineTuner(base_model_id=args.base_model)
+
+        # using the fixed data paths to the folders
+        train_data_path = "data/splits/train_emoji_data.json"
+        val_data_path = "data/splits/val_emoji_data.json"
+        
+        if args.method == "lora":
+            output_path = fine_tuner.train_lora(
+                train_data_path=train_data_path,
+                val_data_path=val_data_path,
+                model_name=args.output,
+                learning_rate=args.learning_rate,
+                lora_rank=args.lora_rank,
+                num_epochs=args.epochs,
+                batch_size=args.batch_size,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                output_dir=args.output_dir,
+            )
+        elif args.method == "dreambooth":
+            output_path = fine_tuner.train_dreambooth(
+                train_data_path=train_data_path,
+                val_data_path=val_data_path,
+                model_name=args.output,
+                instance_prompt=args.instance_prompt,
+                class_prompt=args.class_prompt,
+                learning_rate=args.learning_rate,
+                num_epochs=args.epochs,
+                batch_size=args.batch_size,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                output_dir=args.output_dir,
+            )
+        elif args.method == "full":
+            output_path = fine_tuner.train_full(
+                train_data_path=train_data_path,
+                val_data_path=val_data_path,
+                model_name=args.output,
+                learning_rate=args.learning_rate,
+                num_epochs=args.epochs,
+                batch_size=args.batch_size,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                output_dir=args.output_dir,
+            )
+        else:
+            raise ValueError(f"Unknown fine-tuning method: {args.method}")
+            
+        print(f"Fine-tuning completed. Model saved to: {output_path}")
+    except Exception as e:
+        print(f"Error during fine-tuning: {str(e)}")
+        raise
+
+def handle_list_models():
+    models = model_manager.get_available_models()
+    print("Available models:")
+    for model in models:
+        print(f"- {model}")
+
+def handle_set_model(args):
+    # check if server is up
+    server_running, server_info = is_server_running()
+    if server_running:
+        print(f"Server is running with model: {server_info['model']}")
+        result = set_model_remote(args.model_name)
+        if result["status"] == "success":
+            print(f"Successfully set model to {args.model_name} on server")
+        else:
+            print(f"Error: {result['error']}")
+    else:
+        print("Server not running, setting model locally...")
+        success, message = model_manager.initialize_model(args.model_name)
+        if success:
+            print(f"Successfully set model to {args.model_name}")
+        else:
+            print(f"Error: {message}")
+
+def handle_list_finetuned():
+    fine_tuner = EmojiFineTuner(DEFAULT_MODEL)
+    models = fine_tuner.list_fine_tuned_models()
+    if not models:
+        print("No fine-tuned models found")
+    else:
+        print(f"{len(models)} Fine-tuned models:")
+        for model in models:
+            print(f"- {model}")
+
+def handle_server(args):
+    print(f"Starting server with model {args.model}...")
+    start_server(args.model, args.host, args.port, args.debug)
+
+def handle_server_status(args):
+    server_running, server_info = is_server_running()
+    if server_running:
+        print(f"Server is running")
+        print(f"Active model: {server_info['model']}")
+        print(f"Device: {server_info['device']}")
+    else:
+        print("Server is not running")
+
+def handle_sync(args):
     # get VM host from environment variable
     vm_host = os.getenv('GCP_VM_EXTERNAL_IP')
     if not vm_host:
@@ -189,11 +177,11 @@ def sync_images():
             'gcloud',
             'compute',
             'scp',
-            # f'instance-{instance_name}:~/emoji-gen/generated_emojis/*.png',
-            f'instance-{instance_name}:~/generated_emojis/*.png',
-
-            str(local_sync_dir)
+            '--recurse',  
+            f'instance-{instance_name}:~/emoji-gen/generated_emojis/*',  ## make sure we can get folders, not just files
+            str(local_sync_dir)  
         ]
+        
         subprocess.run(scp_cmd, check=True)
         print("Sync complete!")
         
@@ -202,6 +190,165 @@ def sync_images():
     except Exception as e:
         print(f"Unexpected error: {e}")
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description='Emoji Generation Development CLI')
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+    
+    # List models command
+    list_parser = subparsers.add_parser('list-models', help='List available models')
+    
+    # Set model command
+    set_model_parser = subparsers.add_parser('set-model', help='Set default model')
+    set_model_parser.add_argument('model', help='Model name or path')
+    
+    # Prepare command
+    prepare_parser = subparsers.add_parser('prepare', help='Prepare data for training')
+    
+    # Fine-tune command
+    finetune_parser = subparsers.add_parser('fine-tune', help='Fine-tune model with automatic hyperparameter tuning')
+    finetune_parser.add_argument('--model', default=DEFAULT_MODEL,
+                               help='Base model to fine-tune')
+    finetune_parser.add_argument('--output', help='Output name for fine-tuned model')
+    finetune_parser.add_argument('--method', choices=['lora', 'dreambooth', 'full'],
+                               default='lora', help='Fine-tuning method')
+    finetune_parser.add_argument('--epochs', type=int, default=100,
+                               help='Number of training epochs')
+    finetune_parser.add_argument('--batch-size', type=int, default=4,
+                               help='Training batch size')
+    finetune_parser.add_argument('--learning-rate', type=float, default=1e-4,
+                               help='Learning rate')
+    finetune_parser.add_argument('--lora-rank', type=int, default=4,
+                               help='LoRA rank (for LoRA method)')
+    finetune_parser.add_argument('--instance-prompt', default='a photo of sks emoji',
+                               help='Instance prompt (for Dreambooth)')
+    finetune_parser.add_argument('--class-prompt', default='a photo of emoji',
+                               help='Class prompt (for Dreambooth)')
+    finetune_parser.add_argument('--skip-tuning', action='store_true',
+                               help='Skip hyperparameter tuning and use default parameters')
+    
+    # List fine-tuned models command
+    list_finetuned_parser = subparsers.add_parser('list-finetuned',
+                                                help='List fine-tuned models')
+    
+    # Start server command
+    server_parser = subparsers.add_parser("start-server", help="Start the emoji generation server")
+    server_parser.add_argument("--model", type=str, default="sd-v1.5", help="Model ID to use for generation")
+    server_parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to run the server on")
+    server_parser.add_argument("--port", type=int, default=5000, help="Port to run the server on")
+    server_parser.add_argument("--debug", action="store_true", help="Run in debug mode")
+    
+    # Server status command
+    status_parser = subparsers.add_parser("server-status", help="Check server status")
+    
+    # Sync command
+    sync_parser = subparsers.add_parser("sync", help="Sync generated images to local machine")
+    
+    args = parser.parse_args()
+    
+    if args.command == 'list-models':
+        print("\nAvailable models:")
+        models = EmojiGenerator.list_models()
+        for model in models:
+            print(f"- {model}")
+            
+    elif args.command == 'set-model':
+        EmojiGenerator.set_default_model(args.model)
+        print(f"Default model set to: {args.model}")
+        
+    elif args.command == 'prepare':
+        prepare_and_split_data()
+        
+    elif args.command == 'fine-tune':
+        # Generate output name if not provided
+        if not args.output:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            args.output = f"{args.model.split('/')[-1]}_{args.method}_{timestamp}"
+        
+        print(f"\nFine-tuning model: {args.model}")
+        print(f"Method: {args.method}")
+        print(f"Output: {args.output}")
+        
+        if not args.skip_tuning:
+            print("\nFinding optimal hyperparameters...")
+            best_params = tune_hyperparameters(
+                train_data_path=TRAIN_DATA_PATH,
+                val_data_path=VAL_DATA_PATH,
+                base_model=args.model,
+                method=args.method,
+                num_samples=5,  # Quick search
+                max_epochs=3    # Quick search
+            )
+            print("\nBest parameters found:")
+            print(json.dumps(best_params, indent=2))
+            
+            # override CLI with best params
+            args.learning_rate = best_params['learning_rate']
+            args.batch_size = best_params['batch_size']
+            if args.method == 'lora':
+                args.lora_rank = best_params['lora_rank']
+                args.lora_alpha = best_params['lora_alpha']
+                args.lora_dropout = best_params['lora_dropout']
+            elif args.method == 'dreambooth':
+                args.instance_prompt = best_params['instance_prompt']
+                args.class_prompt = best_params['class_prompt']
+            else:  # full
+                args.weight_decay = best_params['weight_decay']
+                args.warmup_steps = best_params['warmup_steps']
+                args.scheduler = best_params['scheduler']
+        
+        print("\nStarting fine-tuning...")
+        tuner = EmojiFineTuner(args.model)
+        
+        if args.method == 'lora':
+            tuner.train_lora(
+                train_data_path=TRAIN_DATA_PATH,
+                val_data_path=VAL_DATA_PATH,
+                output_name=args.output,
+                num_epochs=args.epochs,
+                batch_size=args.batch_size,
+                learning_rate=args.learning_rate,
+                lora_rank=args.lora_rank,
+                lora_alpha=args.lora_alpha,
+                lora_dropout=args.lora_dropout
+            )
+        elif args.method == 'dreambooth':
+            tuner.train_dreambooth(
+                train_data_path=TRAIN_DATA_PATH,
+                val_data_path=VAL_DATA_PATH,
+                output_name=args.output,
+                instance_prompt=args.instance_prompt,
+                class_prompt=args.class_prompt,
+                num_epochs=args.epochs,
+                batch_size=args.batch_size,
+                learning_rate=args.learning_rate
+            )
+        else:  # full
+            tuner.train_full(
+                train_data_path=TRAIN_DATA_PATH,
+                val_data_path=VAL_DATA_PATH,
+                output_name=args.output,
+                num_epochs=args.epochs,
+                batch_size=args.batch_size,
+                learning_rate=args.learning_rate
+            )
+            
+        print(f"\nFine-tuning complete! Model saved as: {args.output}")
+            
+    elif args.command == 'list-finetuned':
+        print("\nFine-tuned models:")
+        models = EmojiFineTuner.list_finetuned_models()
+        for model in models:
+            print(f"- {model}")
+            
+    elif args.command == 'start-server':
+        handle_server(args)
+    elif args.command == 'server-status':
+        handle_server_status(args)
+    elif args.command == 'sync':
+        handle_sync(args)
+    else:
+        parser.print_help()
+
+if __name__ == '__main__':
     main() 
 
