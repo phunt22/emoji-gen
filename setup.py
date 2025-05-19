@@ -19,6 +19,7 @@ setup(
         # fine tuning dependencies
         "peft",  # For LoRA
         "ray[tune]",  # hyperparam tuning
+        "hyperopt",
         
         # web/server dependencies
         "flask",

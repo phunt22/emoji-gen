@@ -19,16 +19,17 @@ class ModelManager:
 
     def cleanup(self):
         """Clean up resources."""
-        if self.active_model is not None:
-            try:
+        try:
+            if hasattr(self, 'active_model') and self.active_model is not None:
                 del self.active_model
                 torch.cuda.empty_cache()
                 gc.collect()
-            except Exception as e:
-                print(f"Warning: Error during cleanup: {e}")
-        self.active_model = None
-        self._model_id = None
-        self._initialized = False
+        except Exception as e:
+            print(f"Warning: Error during cleanup: {e}")
+        finally:
+            self.active_model = None
+            self._model_id = None
+            self._initialized = False
 
     def initialize_model(self, model_name: str = DEFAULT_MODEL) -> Tuple[bool, str]:
         try:

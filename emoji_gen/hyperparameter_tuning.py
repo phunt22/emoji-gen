@@ -8,7 +8,7 @@ import torch
 import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.search.bayesopt import BayesOptSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 
 from emoji_gen.models import EmojiFineTuner
 
@@ -93,58 +93,69 @@ def tune_hyperparameters(
     
     # define training function
     def train_func(config):
-        tuner = EmojiFineTuner(base_model)
+        try:
+            tuner = EmojiFineTuner(base_model)
+            
+            if method == "lora":
+                val_loss = tuner.train_lora(
+                    train_data_path=train_data_path,
+                    val_data_path=val_data_path,
+                    output_name=f"tuned_model_{tune.get_trial_id()}",
+                    num_epochs=max_epochs,
+                    batch_size=config["batch_size"],
+                    learning_rate=config["learning_rate"],
+                    lora_rank=config["lora_rank"],
+                    lora_alpha=config["lora_alpha"],
+                    lora_dropout=config["lora_dropout"],
+                    gradient_accumulation_steps=config["gradient_accumulation_steps"]
+                )
+                # Report metrics to Ray Tune
+                tune.report(val_loss=val_loss)
+            elif method == "dreambooth":
+                # TODO PLACEHOLDER for Dreambooth implementation
+                pass
+            else:  # full
+                # TODO PLACEHOLDER for Full fine-tuning implementation
+                pass
+        except Exception as e:
+            # report the failure to ray tune
+            tune.report(val_loss=float('inf'))
+            raise e
+    
+    try:
+        output_dir = Path("ray_results").absolute()
+        output_dir.mkdir(exist_ok=True)
         
-        if method == "lora":
-            tuner.train_lora(
-                train_data_path=train_data_path,
-                val_data_path=val_data_path,
-                output_name=f"tuned_model_{tune.get_trial_id()}",
-                num_epochs=max_epochs,
-                batch_size=config["batch_size"],
-                learning_rate=config["learning_rate"],
-                lora_rank=config["lora_rank"],
-                lora_alpha=config["lora_alpha"],
-                lora_dropout=config["lora_dropout"],
-                gradient_accumulation_steps=config["gradient_accumulation_steps"]
-            )
-        elif method == "dreambooth":
-            # Placeholder for Dreambooth implementation
-            pass
-        else:  # full
-            # Placeholder for Full fine-tuning implementation
-            pass
-    
-    # Create output directory
-    output_dir = Path("ray_results").absolute() ## need to use absolute path since we are prefixing with file://
-    output_dir.mkdir(exist_ok=True)
-    
-    # Run hyperparameter search
-    analysis = tune.run(
-        train_func,
-        config=config,
-        num_samples=num_samples,
-        scheduler=ASHAScheduler(
-            metric="val_loss",
-            mode="min",
-            max_t=max_epochs,
-            grace_period=1
-        ),
-        search_alg=BayesOptSearch(metric="val_loss", mode="min"),
-        resources_per_trial={"gpu": 1},
-        storage_path=f"file://{output_dir}",  ## need to use URI format, so prefix with file://
-        verbose=1
-    )
-    
-    # Get best trial
-    best_trial = analysis.get_best_trial("val_loss", "min", "last")
-    best_params = best_trial.config
-    
-    # Save best parameters
-    with open(output_dir / f"best_params_{method}.json", "w") as f:
-        json.dump(best_params, f, indent=2)
-    
-    return best_params
+        # Run hyperparameter search
+        analysis = tune.run(
+            train_func,
+            config=config,
+            num_samples=num_samples,
+            scheduler=ASHAScheduler(
+                metric="val_loss",
+                mode="min",
+                max_t=max_epochs,
+                grace_period=1
+            ),
+            search_alg=HyperOptSearch(metric="val_loss", mode="min"), ## USE HYPEROPT
+            resources_per_trial={"gpu": 1}, # we only have 1 gpu
+            storage_path=f"file://{output_dir}",  # need to use URI format, so prefix with file://
+            verbose=1
+        )
+        
+        # Get best trial
+        best_trial = analysis.get_best_trial("val_loss", "min", "last")
+        best_params = best_trial.config
+        
+        # Save best params
+        with open(output_dir / f"best_params_{method}.json", "w") as f:
+            json.dump(best_params, f, indent=2)
+        
+        return best_params
+    finally:
+        # Clean up Ray resources, even if fail
+        if ray.is_initialized():
+            ray.shutdown()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
