@@ -9,6 +9,7 @@ import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.search.hyperopt import HyperOptSearch
+from ray.air import session
 
 from emoji_gen.models import EmojiFineTuner
 
@@ -23,17 +24,17 @@ def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str,
     """
     # common parameters for all methods
     common_space = {
-        "learning_rate": tune.loguniform(1e-6, 1e-4),
-        "batch_size": tune.choice([4, 8]),
-        "gradient_accumulation_steps": tune.choice([2, 4, 8]),
+        "learning_rate": tune.loguniform(1e-6, 1e-4),  
+        "batch_size": tune.choice([4, 8]),  
+        "gradient_accumulation_steps": tune.choice([2, 4, 8]),  
     }
     
     if method == "lora":
         return {
             **common_space,
-            "lora_rank": tune.choice([2, 4]),
-            "lora_alpha": tune.choice([16, 32]),
-            "lora_dropout": tune.uniform(0.0, 0.05)
+            "lora_rank": tune.choice([2, 4]),  
+            "lora_alpha": tune.choice([16, 32]),  
+            "lora_dropout": tune.uniform(0.0, 0.05)  
         }
     elif method == "dreambooth":
         return {
@@ -100,7 +101,7 @@ def tune_hyperparameters(
                 val_loss = tuner.train_lora(
                     train_data_path=train_data_path,
                     val_data_path=val_data_path,
-                    output_name=f"tuned_model_{tune.get_trial_id()}",
+                    output_name="tuned_model",
                     num_epochs=max_epochs,
                     batch_size=config["batch_size"],
                     learning_rate=config["learning_rate"],
@@ -111,9 +112,9 @@ def tune_hyperparameters(
                 )
                 # Report metrics to Ray Tune, handling NaN values
                 if torch.isnan(torch.tensor(val_loss)) or torch.isinf(torch.tensor(val_loss)):
-                    tune.report(metrics={"val_loss": float('inf')})
+                    session.report({"val_loss": float('inf')})
                 else:
-                    tune.report(metrics={"val_loss": val_loss})
+                    session.report({"val_loss": val_loss})
             elif method == "dreambooth":
                 # TODO PLACEHOLDER for Dreambooth implementation
                 pass
@@ -122,7 +123,7 @@ def tune_hyperparameters(
                 pass
         except Exception as e:
             # report the failure to ray tune
-            tune.report(metrics={"val_loss": float('inf')})
+            session.report({"val_loss": float('inf')})
             raise e
     
     try:
@@ -153,7 +154,7 @@ def tune_hyperparameters(
         results = tuner.fit()
         
         # Get best trial
-        best_trial = results.get_best_result(metric="val_loss", mode="min")
+        best_trial = results.get_best_result(metric="val_loss", mode="min", filter_nan_and_inf=False)
         best_params = best_trial.config
         
         # Save best params
