@@ -109,11 +109,19 @@ class EmojiFineTuner:
         
         # Load base model
         self.logger.info(f"Loading base model: {self.base_model_id}")
-        pipe = StableDiffusionPipeline.from_pretrained(
-            self.base_model_id,
-            torch_dtype=DTYPE,
-            use_safetensors=True,
-        )
+        if "xl" in self.base_model_id.lower():
+            pipe = StableDiffusionXLPipeline.from_pretrained(
+                self.base_model_id,
+                torch_dtype=DTYPE,
+                use_safetensors=True,
+                variant="fp16" if DEVICE == "cuda" else None
+            )
+        else:
+            pipe = StableDiffusionPipeline.from_pretrained(
+                self.base_model_id,
+                torch_dtype=DTYPE,
+                use_safetensors=True,
+            )
         
         # Create LoRA configuration
         lora_config = LoraConfig(
