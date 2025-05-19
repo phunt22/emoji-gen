@@ -101,7 +101,7 @@ def tune_hyperparameters(
                 val_loss = tuner.train_lora(
                     train_data_path=train_data_path,
                     val_data_path=val_data_path,
-                    output_name="tuned_model",
+                    model_name="tuned_model",
                     num_epochs=max_epochs,
                     batch_size=config["batch_size"],
                     learning_rate=config["learning_rate"],

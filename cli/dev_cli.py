@@ -301,7 +301,7 @@ def main():
             tuner.train_lora(
                 train_data_path=TRAIN_DATA_PATH,
                 val_data_path=VAL_DATA_PATH,
-                output_name=args.output,
+                model_name=args.output,
                 num_epochs=args.epochs,
                 batch_size=args.batch_size,
                 learning_rate=args.learning_rate,
