@@ -100,7 +100,7 @@ def tune_hyperparameters(
                 val_loss = tuner.train_lora(
                     train_data_path=train_data_path,
                     val_data_path=val_data_path,
-                    output_name=f"tuned_model_{tune.get_trial_id()}",
+                    output_name=f"tuned_model_{tune.get_trial_info().trial_id}",
                     num_epochs=max_epochs,
                     batch_size=config["batch_size"],
                     learning_rate=config["learning_rate"],
@@ -127,24 +127,32 @@ def tune_hyperparameters(
         output_dir.mkdir(exist_ok=True)
         
         # Run hyperparameter search
-        analysis = tune.run(
-            train_func,
-            config=config,
-            num_samples=num_samples,
-            scheduler=ASHAScheduler(
+        tuner = tune.Tuner(
+            tune.with_parameters(train_func),
+            tune_config=tune.TuneConfig(
                 metric="val_loss",
                 mode="min",
-                max_t=max_epochs,
-                grace_period=1
+                num_samples=num_samples,
+                scheduler=ASHAScheduler(
+                    metric="val_loss",
+                    mode="min",
+                    max_t=max_epochs,
+                    grace_period=1
+                ),
+                search_alg=HyperOptSearch(metric="val_loss", mode="min"),
             ),
-            search_alg=HyperOptSearch(metric="val_loss", mode="min"), ## USE HYPEROPT
-            resources_per_trial={"gpu": 1}, # we only have 1 gpu
-            storage_path=f"file://{output_dir}",  # need to use URI format, so prefix with file://
-            verbose=1
+            run_config=ray.air.RunConfig(
+                local_dir=str(output_dir),
+                verbose=1,
+            ),
+            param_space=config,
         )
         
+        # Run the tuning
+        results = tuner.fit()
+        
         # Get best trial
-        best_trial = analysis.get_best_trial("val_loss", "min", "last")
+        best_trial = results.get_best_result(metric="val_loss", mode="min")
         best_params = best_trial.config
         
         # Save best params
