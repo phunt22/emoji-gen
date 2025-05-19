@@ -5,6 +5,7 @@ import logging
 from typing import Dict, Any, Literal
 
 import torch
+import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.search.bayesopt import BayesOptSearch
@@ -78,10 +79,19 @@ def tune_hyperparameters(
     Returns:
         Dictionary of best hyperparameters
     """
-    # Get method-specific search space
+    # Initialize Ray
+    if not ray.is_initialized():
+        ray.init(
+            num_cpus=os.cpu_count(),
+            num_gpus=torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            local_mode=False,  # Set to True for debugging/logs (False is way faster)
+            ignore_reinit_error=True
+        )
+    
+    # get method-specific search space
     config = get_search_space(method)
     
-    # Define training function
+    # define training function
     def train_func(config):
         tuner = EmojiFineTuner(base_model)
         
@@ -106,7 +116,7 @@ def tune_hyperparameters(
             pass
     
     # Create output directory
-    output_dir = Path("ray_results")
+    output_dir = Path("ray_results").absolute() ## need to use absolute path since we are prefixing with file://
     output_dir.mkdir(exist_ok=True)
     
     # Run hyperparameter search
@@ -122,7 +132,7 @@ def tune_hyperparameters(
         ),
         search_alg=BayesOptSearch(metric="val_loss", mode="min"),
         resources_per_trial={"gpu": 1},
-        storage_path=str(output_dir),
+        storage_path=f"file://{output_dir}",  ## need to use URI format, so prefix with file://
         verbose=1
     )
     
