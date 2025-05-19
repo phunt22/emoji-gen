@@ -130,8 +130,6 @@ def tune_hyperparameters(
         tuner = tune.Tuner(
             tune.with_parameters(train_func),
             tune_config=tune.TuneConfig(
-                metric="val_loss",
-                mode="min",
                 num_samples=num_samples,
                 scheduler=ASHAScheduler(
                     metric="val_loss",
@@ -145,7 +143,6 @@ def tune_hyperparameters(
                 storage_path=str(output_dir),
                 verbose=1,
             ),
-            
             param_space=config,
         )
         
