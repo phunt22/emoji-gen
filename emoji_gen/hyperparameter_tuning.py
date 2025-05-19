@@ -23,17 +23,17 @@ def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str,
     """
     # common parameters for all methods
     common_space = {
-        "learning_rate": tune.loguniform(1e-5, 1e-3),
-        "batch_size": tune.choice([4, 8, 16]),
-        "gradient_accumulation_steps": tune.choice([1, 2, 4, 8]),
+        "learning_rate": tune.loguniform(1e-6, 1e-4),
+        "batch_size": tune.choice([4, 8]),
+        "gradient_accumulation_steps": tune.choice([2, 4, 8]),
     }
     
     if method == "lora":
         return {
             **common_space,
-            "lora_rank": tune.choice([2, 4, 8]),
-            "lora_alpha": tune.choice([16, 32, 64]),
-            "lora_dropout": tune.uniform(0.0, 0.1)
+            "lora_rank": tune.choice([2, 4]),
+            "lora_alpha": tune.choice([16, 32]),
+            "lora_dropout": tune.uniform(0.0, 0.05)
         }
     elif method == "dreambooth":
         return {
@@ -100,7 +100,7 @@ def tune_hyperparameters(
                 val_loss = tuner.train_lora(
                     train_data_path=train_data_path,
                     val_data_path=val_data_path,
-                    output_name=f"tuned_model_{tune.get_trial_info().trial_id}",
+                    output_name=f"tuned_model_{tune.get_trial_id()}",
                     num_epochs=max_epochs,
                     batch_size=config["batch_size"],
                     learning_rate=config["learning_rate"],
@@ -109,8 +109,11 @@ def tune_hyperparameters(
                     lora_dropout=config["lora_dropout"],
                     gradient_accumulation_steps=config["gradient_accumulation_steps"]
                 )
-                # Report metrics to Ray Tune
-                tune.report(metrics={"val_loss": val_loss})
+                # Report metrics to Ray Tune, handling NaN values
+                if torch.isnan(torch.tensor(val_loss)) or torch.isinf(torch.tensor(val_loss)):
+                    tune.report(metrics={"val_loss": float('inf')})
+                else:
+                    tune.report(metrics={"val_loss": val_loss})
             elif method == "dreambooth":
                 # TODO PLACEHOLDER for Dreambooth implementation
                 pass
