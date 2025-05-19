@@ -110,7 +110,7 @@ def tune_hyperparameters(
                     gradient_accumulation_steps=config["gradient_accumulation_steps"]
                 )
                 # Report metrics to Ray Tune
-                tune.report(val_loss=val_loss)
+                tune.report(metrics={"val_loss": val_loss})
             elif method == "dreambooth":
                 # TODO PLACEHOLDER for Dreambooth implementation
                 pass
@@ -119,7 +119,7 @@ def tune_hyperparameters(
                 pass
         except Exception as e:
             # report the failure to ray tune
-            tune.report(val_loss=float('inf'))
+            tune.report(metrics={"val_loss": float('inf')})
             raise e
     
     try:
