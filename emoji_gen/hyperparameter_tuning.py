@@ -122,7 +122,7 @@ def tune_hyperparameters(
         ),
         search_alg=BayesOptSearch(metric="val_loss", mode="min"),
         resources_per_trial={"gpu": 1},
-        local_dir=str(output_dir),
+        storage_path=str(output_dir),
         verbose=1
     )
     
