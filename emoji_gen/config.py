@@ -51,17 +51,6 @@ MODELS_DIR = Path("models")
 
 # helper methods
 def get_model_path(model_name: str) -> str:
-    """Get the full model path for a given model name.
-    
-    Args:
-        model_name: Name of the model to get path for
-        
-    Returns:
-        Full path to the model
-        
-    Raises:
-        ValueError: If model is not found or path is invalid
-    """
     if not model_name:
         raise ValueError("Model name cannot be empty")
         

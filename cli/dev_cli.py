@@ -21,7 +21,8 @@ from emoji_gen.config import (
     EMOJI_DATA_PATH,
     DATA_SPLITS_DIR,
     TRAIN_DATA_PATH,
-    VAL_DATA_PATH
+    VAL_DATA_PATH,
+    get_model_path
 )
 
 # load env
@@ -45,7 +46,8 @@ def prepare_and_split_data(output_dir: str = "data/splits"):
 
 def handle_finetune(args):
     try:
-        fine_tuner = EmojiFineTuner(base_model_id=args.model)
+        model_id = get_model_path(args.model)
+        fine_tuner = EmojiFineTuner(base_model_id=model_id)
 
         # using the fixed data paths to the folders
         train_data_path = TRAIN_DATA_PATH

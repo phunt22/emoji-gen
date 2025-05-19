@@ -1,9 +1,9 @@
 import torch
 from pathlib import Path
 import logging
-from typing import Optional, Dict, List, Union, Literal
+from typing import Optional, Dict, List, Union, Literal, Tuple
 from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, TaskType
 from transformers import TrainingArguments
 from diffusers.optimization import get_scheduler
 from emoji_gen.models.cache import model_cache
@@ -123,13 +123,19 @@ class EmojiFineTuner:
                 use_safetensors=True,
             )
         
-        # Create LoRA configuration
+        # create lora config based on the model type
+        if "xl" in self.base_model_id.lower():
+            target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
+        else:
+            target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
+            
         lora_config = LoraConfig(
             r=lora_rank,
             lora_alpha=lora_alpha,
-            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+            target_modules=target_modules,
             lora_dropout=lora_dropout,
             bias="none",
+            task_type=TaskType.UNET
         )
         
         # Apply LoRA to UNet
