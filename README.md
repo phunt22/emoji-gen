@@ -123,6 +123,9 @@ emoji-dev list-fine-tuned
 
 # Sync generated images to local machine
 emoji-dev sync
+
+# Start inference server
+emoji-dev start-server
 ```
 
 ### Available Models

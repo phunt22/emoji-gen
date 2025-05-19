@@ -10,9 +10,9 @@ import torch
 def generate_emoji(
     prompt: str,
     output_path: Optional[str] = None,
-    num_inference_steps: int = 25,
-    guidance_scale: float = 7.5,
-    num_images: int = 1
+    num_inference_steps: int = 40,
+    guidance_scale: float = 10,
+    num_images: int = 1 ## maybe not needed ???
 ):
    
     try:
@@ -26,8 +26,12 @@ def generate_emoji(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
-            num_images_per_prompt=num_images
+            num_images_per_prompt=num_images ## maybe not needed ???
         )
+        
+        # Check if we got any images
+        if not result or not hasattr(result, 'images') or not result.images:
+            return {"status": "error", "error": "No images were generated"}
         
         # save image
         image_path = save_image(prompt, result.images[0], output_path)

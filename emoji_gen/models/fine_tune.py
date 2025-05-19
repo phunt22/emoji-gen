@@ -19,13 +19,6 @@ class EmojiFineTuner:
         output_path = self.output_dir / model_name
         output_path.mkdir(exist_ok=True)
         
-        # TODO: Implement actual fine-tuning logic here
-        # 1. Load base model
-        # 2. Prepare dataset
-        # 3. Set up training loop
-        # 4. Train model
-        # 5. Save fine-tuned model
-        
         # Register the model with the cache
         model_cache.register_model(model_name, str(output_path))
         

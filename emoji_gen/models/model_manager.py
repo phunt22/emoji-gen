@@ -1,25 +1,23 @@
 from pathlib import Path
 import torch
-from diffusers import StableDiffusionPipeline
-from typing import Optional, Dict, Tuple
+from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline, FluxPipeline
+from typing import Optional, Dict, Tuple, Union
 from emoji_gen.config import MODEL_ID_MAP, FINE_TUNED_MODELS_DIR, DEFAULT_MODEL
 
 class ModelManager:
     def __init__(self):
-        self._active_model = None
+        self.active_model = None
         self._model_id = None
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         self._initialized = False
 
     def initialize_model(self, model_name: str = DEFAULT_MODEL) -> Tuple[bool, str]:
-        """Initialize a model and set it as active."""
         try:
             # return early if we already have the model
             if self._initialized and model_name == self._model_id:
                 return True, "Model already initialized"
 
-            
             if model_name in MODEL_ID_MAP:
                 model_path = MODEL_ID_MAP[model_name]
             else:
@@ -27,17 +25,39 @@ class ModelManager:
                 if not Path(model_path).exists():
                     return False, f"Model not found: {model_name}"
 
-
-            # clean up existing model if any
-            if self._active_model is not None:
-                del self._active_model
+            # if theres an existing model, clean it up
+            # check if we have the attribute first, otherwise will crash when trying to change models
+            if hasattr(self, '_active_model') and self.active_model is not None:
+                del self.active_model
                 torch.cuda.empty_cache()
 
-            # load new model
-            self._active_model = StableDiffusionPipeline.from_pretrained(
-                model_path,
-                torch_dtype=self._dtype
-            ).to(self._device)
+            model_path_lower = str(model_path).lower()
+            if "stable" in model_path_lower:
+                # Need to specically handle the SD-XL model :/
+                if "xl" in model_path_lower:
+                    print("Loading SD-XL model...")
+                    self.active_model = StableDiffusionXLPipeline.from_pretrained(
+                        model_path,
+                        torch_dtype=self._dtype,
+                        use_safetensors=True,
+                        variant="fp16" if self._device == "cuda" else None
+                    ).to(self._device)
+                else:
+                    # Regular SD models
+                    print("Loading standard SD model...")
+                    self.active_model = StableDiffusionPipeline.from_pretrained(
+                        model_path,
+                        torch_dtype=self._dtype
+                    ).to(self._device)
+            elif "flux" in model_path_lower:
+                # if FLUX model
+                self.active_model = FluxPipeline.from_pretrained(
+                    model_path, 
+                    torch_dtype=torch.bfloat16
+                ).to(self._device)
+            else:
+                print(f"Cannot find model {model_path}. Make sure that you put it in MODEL_ID_MAP in config.py")
+                return False, f"Cannot find model {model_path}. Check MODEL_ID_MAP in config.py"
 
             self._model_id = model_name
             self._initialized = True
@@ -45,22 +65,23 @@ class ModelManager:
 
         except Exception as e:
             self.cleanup()
+            print(f"Error initializing model: {str(e)}")
             return False, f"Error initializing model: {str(e)}"
 
-    def get_active_model(self) -> Optional[StableDiffusionPipeline]:
+    def get_active_model(self) -> Optional[Union[FluxPipeline, StableDiffusionPipeline]]:
         """Get the currently active model."""
         if not self._initialized:
             success, _ = self.initialize_model()  # try to initialize default model at the start
             if not success:
                 return None
-        return self._active_model
+        return self.active_model
 
     def cleanup(self):
         """Clean up resources."""
-        if self._active_model is not None:
-            del self._active_model
+        if self.active_model is not None:
+            del self.active_model
             torch.cuda.empty_cache()
-        self._active_model = None
+        self.active_model = None
         self._model_id = None
         self._initialized = False
 
