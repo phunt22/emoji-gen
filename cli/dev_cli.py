@@ -297,7 +297,8 @@ def main():
                 args.scheduler = best_params['scheduler']
         
         print("\nStarting fine-tuning...")
-        tuner = EmojiFineTuner(args.model)
+        model_id = get_model_path(args.model)
+        tuner = EmojiFineTuner(model_id)
         
         if args.method == 'lora':
             tuner.train_lora(

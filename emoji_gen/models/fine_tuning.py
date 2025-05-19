@@ -135,7 +135,7 @@ class EmojiFineTuner:
             target_modules=target_modules,
             lora_dropout=lora_dropout,
             bias="none",
-            task_type=TaskType.UNET
+            # task_type=TaskType.CAUSAL_LM
         )
         
         # Apply LoRA to UNet
