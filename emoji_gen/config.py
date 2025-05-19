@@ -29,10 +29,10 @@ DEFAULT_DATASET = 'data/emojisPruned.json'
 
 # Data paths
 DATA_DIR = Path("data")
-SPLITS_DIR = DATA_DIR / "splits"
-TRAIN_DATA_PATH = str(SPLITS_DIR / "train_emoji_data.json")
-VAL_DATA_PATH = str(SPLITS_DIR / "val_emoji_data.json")
-TEST_DATA_PATH = str(SPLITS_DIR / "test_emoji_data.json")
+DATA_SPLITS_DIR = DATA_DIR / "splits"
+TRAIN_DATA_PATH = str(DATA_SPLITS_DIR / "train_emoji_data.json")
+VAL_DATA_PATH = str(DATA_SPLITS_DIR / "val_emoji_data.json")
+TEST_DATA_PATH = str(DATA_SPLITS_DIR / "test_emoji_data.json")
 EMOJI_DATA_PATH = str(DATA_DIR / "emojisPruned.json")
 
 # Fine-tuning data split ratios, etc.
