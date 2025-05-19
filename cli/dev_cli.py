@@ -15,7 +15,6 @@ from emoji_gen.data_utils.split_data import split_emoji_data
 from emoji_gen.models.model_manager import model_manager
 from emoji_gen.server_client import is_server_running, set_model_remote
 from emoji_gen.server import start_server
-from emoji_gen.models import EmojiGenerator
 from emoji_gen.hyperparameter_tuning import tune_hyperparameters
 from emoji_gen.config import (
     DEFAULT_MODEL,
@@ -247,13 +246,12 @@ def main():
     
     if args.command == 'list-models':
         print("\nAvailable models:")
-        models = EmojiGenerator.list_models()
+        models = model_manager.get_available_models()
         for model in models:
             print(f"- {model}")
             
     elif args.command == 'set-model':
-        EmojiGenerator.set_default_model(args.model)
-        print(f"Default model set to: {args.model}")
+        handle_set_model(args)
         
     elif args.command == 'prepare':
         prepare_and_split_data()

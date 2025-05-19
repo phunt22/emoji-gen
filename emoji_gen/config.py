@@ -39,27 +39,54 @@ EMOJI_DATA_PATH = str(DATA_DIR / "emojisPruned.json")
 TRAIN_RATIO = 0.8
 VAL_RATIO = 0.1
 TEST_RATIO = 0.1
+
+# Validate split ratios
+TOTAL_RATIO = TRAIN_RATIO + VAL_RATIO + TEST_RATIO
+if not (0.99 <= TOTAL_RATIO <= 1.01):
+    raise ValueError(f"Split ratios must sum to 1.0, got {TOTAL_RATIO}")
+
+# Random seed for data splitting
 DATA_SPLIT_SEED = int(os.getenv('DATA_SPLIT_SEED', '42'))
 MODELS_DIR = Path("models")
 
 # helper methods
 def get_model_path(model_name: str) -> str:
-    """Get the full model path for a given model name."""
+    """Get the full model path for a given model name.
+    
+    Args:
+        model_name: Name of the model to get path for
+        
+    Returns:
+        Full path to the model
+        
+    Raises:
+        ValueError: If model is not found or path is invalid
+    """
+    if not model_name:
+        raise ValueError("Model name cannot be empty")
+        
+    # Check base models first
     if model_name in MODEL_ID_MAP:
         return MODEL_ID_MAP[model_name]
 
     fine_tuned_path = FINE_TUNED_MODELS_DIR / model_name
     if fine_tuned_path.exists():
+        if not fine_tuned_path.is_dir():
+            raise ValueError(f"Model path exists but is not a directory: {fine_tuned_path}")
         return str(fine_tuned_path)
-    raise ValueError(f"Unknown model: {model_name}")
+        
+    raise ValueError(f"Model not found: {model_name}")
 
 def is_fine_tuned_model(model_name: str) -> bool:
-    """Check if a model is a fine-tuned model."""
+    
+    if not model_name:
+        return False
     return (FINE_TUNED_MODELS_DIR / model_name).exists()
 
 def get_available_models() -> Dict[str, Any]:
     """Get all available models and their information."""
     models = {}
+    
     # Base models from MODEL_ID_MAP
     for model_id, model_path in MODEL_ID_MAP.items():
         models[model_id] = {
