@@ -35,6 +35,16 @@ class EmojiDataset(Dataset):
         response = requests.get(item['link'])
         image = Image.open(BytesIO(response.content))
         
+        # Convert RGBA to RGB if needed
+        if image.mode == 'RGBA':
+            # Create a white background
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            # Composite the image with alpha over the background
+            background.paste(image, mask=image.split()[3])  # 3 is the alpha channel
+            image = background
+        elif image.mode != 'RGB':
+            image = image.convert('RGB')
+        
         # Resize and convert to tensor
         image = image.resize((self.image_size, self.image_size))
         image = np.array(image)
@@ -191,6 +201,11 @@ class EmojiFineTuner:
             pipe.unet.train()
             for step, batch in enumerate(train_dataloader):
                 with accelerator.accumulate(pipe.unet):
+                    # make sure that data is on the correct device and dtype
+                    batch["pixel_values"] = batch["pixel_values"].to(device=accelerator.device, dtype=DTYPE)
+                    batch["input_ids"] = batch["input_ids"].to(device=accelerator.device)
+                    batch["attention_mask"] = batch["attention_mask"].to(device=accelerator.device)
+                    
                     # Forward pass
                     latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
                     latents = latents * 0.18215
@@ -226,6 +241,11 @@ class EmojiFineTuner:
             val_loss = 0
             with torch.no_grad():
                 for batch in val_dataloader:
+                    # make sure data is on the correct device and dtype
+                    batch["pixel_values"] = batch["pixel_values"].to(device=accelerator.device, dtype=DTYPE)
+                    batch["input_ids"] = batch["input_ids"].to(device=accelerator.device)
+                    batch["attention_mask"] = batch["attention_mask"].to(device=accelerator.device)
+                    
                     latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
                     latents = latents * 0.18215
                     
