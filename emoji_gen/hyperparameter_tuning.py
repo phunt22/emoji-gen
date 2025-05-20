@@ -149,7 +149,8 @@ def tune_hyperparameters(
                     max_t=max_epochs,
                     grace_period=1
                 ),
-                search_alg=HyperOptSearch(metric="val_loss", mode="min"), ## USE HYPEROPT
+                search_alg=HyperOptSearch(metric="val_loss", mode="min"),
+                resources_per_trial={"cpu": 4, "gpu": 1},
             ),
             run_config=ray.air.RunConfig(
                 storage_path=str(output_dir),
