@@ -93,10 +93,7 @@ def tune_hyperparameters(
             num_cpus=os.cpu_count(),
             num_gpus=torch.cuda.device_count() if torch.cuda.is_available() else 0,
             local_mode=False,
-            ignore_reinit_error=True,
-            # To fix previous memory issues
-            _memory=30 * 1024 * 1024 * 1024,  # 30GB memory limit
-            _redis_max_memory=10 * 1024 * 1024 * 1024,  # 10GB Redis memory limit
+            # ignore_reinit_error=True
         )
     
     # get method-specific search space
