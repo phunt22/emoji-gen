@@ -3,6 +3,9 @@ from pathlib import Path
 from typing import Dict, Any
 import os
 
+# Get project root directory (2 levels up from this file)
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+
 # GPU settings
 CUDA_ENABLED = torch.cuda.is_available()
 DEVICE = 'cuda' if CUDA_ENABLED else 'cpu'
@@ -20,15 +23,15 @@ MODEL_ID_MAP = {
 }
 
 # Path settings
-MODEL_LIST_PATH = Path("model_list.json")
-FINE_TUNED_MODELS_DIR = Path("fine_tuned_models")
-DEFAULT_OUTPUT_PATH = Path.cwd() / "generated_emojis"
+MODEL_LIST_PATH = PROJECT_ROOT / "model_list.json"
+FINE_TUNED_MODELS_DIR = PROJECT_ROOT / "fine_tuned_models"
+DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "generated_emojis"
 
 # Fine-tuning dataset defaults
-DEFAULT_DATASET = 'data/emojisPruned.json'
+DEFAULT_DATASET = str(PROJECT_ROOT / 'data/emojisPruned.json')
 
 # Data paths
-DATA_DIR = Path("data")
+DATA_DIR = PROJECT_ROOT / "data"
 DATA_SPLITS_DIR = DATA_DIR / "splits"
 TRAIN_DATA_PATH = str(DATA_SPLITS_DIR / "train_emoji_data.json")
 VAL_DATA_PATH = str(DATA_SPLITS_DIR / "val_emoji_data.json")
@@ -47,7 +50,7 @@ if not (0.99 <= TOTAL_RATIO <= 1.01):
 
 # Random seed for data splitting
 DATA_SPLIT_SEED = int(os.getenv('DATA_SPLIT_SEED', '42'))
-MODELS_DIR = Path("models")
+MODELS_DIR = PROJECT_ROOT / "models"
 
 # helper methods
 def get_model_path(model_name: str) -> str:

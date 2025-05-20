@@ -15,10 +15,10 @@ from emoji_gen.models import EmojiFineTuner
 from emoji_gen.config import get_model_path
 
 from emoji_gen.config import *
-from emoji_gen.config import {
+from emoji_gen.config import (
     TRAIN_DATA_PATH,
     VAL_DATA_PATH,
-}
+)
 
 def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str, Any]:
     """Get the search space for a specific fine-tuning method.
