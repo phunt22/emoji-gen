@@ -32,8 +32,8 @@ def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str,
     # common parameters for all methods
     common_space = {
         "learning_rate": tune.loguniform(1e-6, 1e-4),  
-        "batch_size": tune.choice([4, 8]),  
-        "gradient_accumulation_steps": tune.choice([2, 4, 8]),  
+        "batch_size": tune.choice([1, 2]),  
+        "gradient_accumulation_steps": tune.choice([4, 8]), 
     }
     
     if method == "lora":
@@ -71,7 +71,7 @@ def tune_hyperparameters(
     val_data_path: str,
     base_model: str = "runwayml/stable-diffusion-v1-5", 
     method: Literal["lora", "dreambooth", "full"] = "lora",
-    num_samples: int = 5,
+    num_samples: int = 2,  
     max_epochs: int = 3
 ) -> Dict[str, Any]:
     """Find optimal hyperparameters for fine-tuning.
@@ -87,13 +87,16 @@ def tune_hyperparameters(
     Returns:
         Dictionary of best hyperparameters
     """
-    # Initialize Ray
+    # Initialize Ray with memory constraints
     if not ray.is_initialized():
         ray.init(
             num_cpus=os.cpu_count(),
             num_gpus=torch.cuda.device_count() if torch.cuda.is_available() else 0,
-            local_mode=False,  # Set to True for debugging/logs (False is way faster)
-            ignore_reinit_error=True
+            local_mode=False,
+            ignore_reinit_error=True,
+            # To fix previous memory issues
+            _memory=30 * 1024 * 1024 * 1024,  # 30GB memory limit
+            _redis_max_memory=10 * 1024 * 1024 * 1024,  # 10GB Redis memory limit
         )
     
     # get method-specific search space
@@ -154,6 +157,7 @@ def tune_hyperparameters(
             run_config=ray.air.RunConfig(
                 storage_path=str(output_dir),
                 verbose=1,
+                resources_per_trial={"cpu": 4, "gpu": 1}, 
             ),
             param_space=config,
         )
