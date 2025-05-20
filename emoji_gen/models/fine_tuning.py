@@ -35,6 +35,10 @@ class EmojiDataset(Dataset):
         response = requests.get(item['link'])
         image = Image.open(BytesIO(response.content))
         
+        # convert palette images to RGBA first
+        if image.mode == 'P':
+            image = image.convert('RGBA')
+        
         # Convert RGBA to RGB if needed
         if image.mode == 'RGBA':
             # Create a white background
@@ -133,6 +137,14 @@ class EmojiFineTuner:
                 use_safetensors=True,
             )
         
+        # Move model to device and set dtype
+        pipe = pipe.to(device=accelerator.device)
+        
+        # Ensure all model components are in the same dtype
+        pipe.vae = pipe.vae.to(dtype=DTYPE)
+        pipe.text_encoder = pipe.text_encoder.to(dtype=DTYPE)
+        pipe.unet = pipe.unet.to(dtype=DTYPE)
+        
         # create lora config based on the model type
         if "xl" in self.base_model_id.lower():
             target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
@@ -145,7 +157,6 @@ class EmojiFineTuner:
             target_modules=target_modules,
             lora_dropout=lora_dropout,
             bias="none",
-            # task_type=TaskType.CAUSAL_LM
         )
         
         # Apply LoRA to UNet
@@ -216,7 +227,15 @@ class EmojiFineTuner:
                     
                     encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
                     
-                    noise_pred = pipe.unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                    # add empty added_cond_kwargs for SDXL
+                    added_cond_kwargs = {}
+                    if "xl" in self.base_model_id.lower():
+                        added_cond_kwargs = {
+                            "text_embeds": torch.zeros((batch["input_ids"].shape[0], 1280), device=accelerator.device, dtype=DTYPE),
+                            "time_ids": torch.zeros((batch["input_ids"].shape[0], 6), device=accelerator.device, dtype=DTYPE)
+                        }
+                    
+                    noise_pred = pipe.unet(noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
                     
                     # Calculate loss
                     loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
@@ -255,7 +274,15 @@ class EmojiFineTuner:
                     
                     encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
                     
-                    noise_pred = pipe.unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                    # Add empty added_cond_kwargs for SDXL
+                    added_cond_kwargs = {}
+                    if "xl" in self.base_model_id.lower():
+                        added_cond_kwargs = {
+                            "text_embeds": torch.zeros((batch["input_ids"].shape[0], 1280), device=accelerator.device, dtype=DTYPE),
+                            "time_ids": torch.zeros((batch["input_ids"].shape[0], 6), device=accelerator.device, dtype=DTYPE)
+                        }
+                    
+                    noise_pred = pipe.unet(noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
                     
                     loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
                     loss = loss.mean([1, 2, 3]).mean()
