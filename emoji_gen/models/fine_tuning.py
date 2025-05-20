@@ -178,7 +178,6 @@ class EmojiFineTuner:
             pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
             pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
         
-        pipe.scheduler = pipe.scheduler.to(accelerator.device)
 
         self.logger.info("Starting training...")
         global_step = 0
@@ -244,65 +243,65 @@ class EmojiFineTuner:
                     if global_step % 100 == 0:
                         self.logger.info(f"Step {global_step}: Loss = {loss.item():.4f}")
                     
-                # validation loop
-                pipe.unet.eval()
-                with torch.no_grad():
-                    for batch in val_dataloader:
-                        batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, dtype=DTYPE)
-                        batch["input_ids"] = batch["input_ids"].to(accelerator.device)
+            # validation loop
+            pipe.unet.eval()
+            with torch.no_grad():
+                for batch in val_dataloader:
+                    batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, dtype=DTYPE)
+                    batch["input_ids"] = batch["input_ids"].to(accelerator.device)
 
-                        latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
-                        latents = latents * 0.18215
-                        
-                        noise = torch.randn_like(latents)
-                        timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
-                        noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
+                    latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
+                    latents = latents * 0.18215
+                    
+                    noise = torch.randn_like(latents)
+                    timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
+                    noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
 
-                        if is_sdxl:
-                            encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                            pooled_output = pipe.text_encoder_2(batch["input_ids"])[1]
+                    if is_sdxl:
+                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
+                        pooled_output = pipe.text_encoder_2(batch["input_ids"])[1]
 
-                            added_cond_kwargs = {
-                                "text_embeds": pooled_output,
-                                "time_ids": torch.zeros((batch_size, 2), device=accelerator.device, dtype=DTYPE)
-                            }
+                        added_cond_kwargs = {
+                            "text_embeds": pooled_output,
+                            "time_ids": torch.zeros((batch_size, 2), device=accelerator.device, dtype=DTYPE)
+                        }
 
-                            noise_pred = pipe.unet(
-                                noisy_latents,
-                                timesteps,
-                                encoder_hidden_states,
-                                added_cond_kwargs=added_cond_kwargs
-                            ).sample
-                        else:
-                            encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                            noise_pred = pipe.unet(
-                                noisy_latents,
-                                timesteps,
-                                encoder_hidden_states
-                            ).sample
-                        
-                        loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
-                        loss = loss.mean([1, 2, 3]).mean()
+                        noise_pred = pipe.unet(
+                            noisy_latents,
+                            timesteps,
+                            encoder_hidden_states,
+                            added_cond_kwargs=added_cond_kwargs
+                        ).sample
+                    else:
+                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
+                        noise_pred = pipe.unet(
+                            noisy_latents,
+                            timesteps,
+                            encoder_hidden_states
+                        ).sample
+                    
+                    loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
+                    loss = loss.mean([1, 2, 3]).mean()
 
-                        val_loss += loss.item()
+                    val_loss += loss.item()
 
-                val_loss /= len(val_dataloader)
-                self.logger.info(f"Epoch {epoch}: Validation Loss = {val_loss:.4f}")
+            val_loss /= len(val_dataloader)
+            self.logger.info(f"Epoch {epoch}: Validation Loss = {val_loss:.4f}")
 
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    output_path = self.output_dir / model_name
-                    output_path.mkdir(exist_ok=True)
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                output_path = self.output_dir / model_name
+                output_path.mkdir(exist_ok=True)
 
-                    pipe.unet.save_pretrained(output_path / "lora_weights")
-                    pipe.save_pretrained(output_path)
+                pipe.unet.save_pretrained(output_path / "lora_weights")
+                pipe.save_pretrained(output_path)
 
-                    model_cache.register_model(model_name, str(output_path))
+                model_cache.register_model(model_name, str(output_path))
 
-                    self.logger.info(f"Saved best model to {output_path}")
-            
-            self.best_val_loss = best_val_loss
-            return str(output_path), best_val_loss
+                self.logger.info(f"Saved best model to {output_path}")
+        
+        self.best_val_loss = best_val_loss
+        return str(output_path), best_val_loss
                             
 
     def train_dreambooth(
