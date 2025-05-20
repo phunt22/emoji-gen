@@ -38,11 +38,16 @@ class EmojiDataset(Dataset):
         
         
         # Convert RGBA to RGB if needed
-        if image.mode == 'RGBA':
-            # Create a white background
+        if image.mode == 'P':
+            # if palette, paste the RGBA mask over the white backround on RGB
+            image = image.convert('RGBA')
             background = Image.new('RGB', image.size, (255, 255, 255))
-            # Composite the image with alpha over the background
             background.paste(image, mask=image.split()[3])  # 3 is the alpha channel
+            image = background
+        if image.mode == 'RGBA':
+            # similar approach
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            background.paste(image, mask=image.split()[3]) 
             image = background
         elif image.mode != 'RGB':
             image = image.convert('RGB')
@@ -207,9 +212,20 @@ class EmojiFineTuner:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
                         pooled_output = pipe.text_encoder_2(batch["input_ids"])[1] ## need text_embeds from second text encoder
 
+                        bs = batch["input_ids"].shape[0]
+                        target_size = (512,512)
+                        time_ids = torch.tensor(
+                            [
+                                [target_size[0], target_size[1], 0, 0, target_size[0], target_size[1]]
+                                for _ in range(bs)
+                            ],
+                            device=accelerator.device,
+                            dtype=DTYPE 
+                        )
+                    
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
-                            "time_ids": torch.zeros((batch_size, 2), device=accelerator.device, dtype=DTYPE)
+                            "time_ids": time_ids
                         }
 
                         noise_pred = pipe.unet(
@@ -245,6 +261,7 @@ class EmojiFineTuner:
                     
             # validation loop
             pipe.unet.eval()
+            val_loss = 0.0
             with torch.no_grad():
                 for batch in val_dataloader:
                     batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, dtype=DTYPE)
@@ -261,9 +278,22 @@ class EmojiFineTuner:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
                         pooled_output = pipe.text_encoder_2(batch["input_ids"])[1]
 
+
+                        # correcting tensor size/shape
+                        bs = batch["input_ids"].shape[0]
+                        target_size = (512, 512)
+                        time_ids = torch.tensor(
+                            [
+                                [target_size[0], target_size[1], 0, 0, target_size[0], target_size[1]]
+                                for _ in range(bs)
+                            ],
+                            device=accelerator.device,
+                            dtype=DTYPE
+                        )
+
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
-                            "time_ids": torch.zeros((batch_size, 2), device=accelerator.device, dtype=DTYPE)
+                            "time_ids": time_ids
                         }
 
                         noise_pred = pipe.unet(
