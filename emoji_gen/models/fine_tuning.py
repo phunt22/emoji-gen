@@ -222,7 +222,10 @@ class EmojiFineTuner:
                             device=accelerator.device,
                             dtype=DTYPE 
                         )
-
+                                                
+                        # Reshape pooled_output to match expected format
+                        # Fix for "Tensors must have same number of dimensions: got 3 and 2"
+                        pooled_output = pooled_output.reshape(pooled_output.shape[0], -1)
                     
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
@@ -279,7 +282,6 @@ class EmojiFineTuner:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
                         pooled_output = pipe.text_encoder_2(batch["input_ids"])[1]
 
-
                         # correcting tensor size/shape
                         bs = batch["input_ids"].shape[0]
                         target_size = (512, 512)
@@ -292,6 +294,10 @@ class EmojiFineTuner:
                             dtype=DTYPE
                         )
 
+                        
+                        # Reshape pooled_output to match expected format
+                        # Fix "Tensors must have same number of dimensions: got 3 and 2"
+                        pooled_output = pooled_output.reshape(pooled_output.shape[0], -1)
 
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
