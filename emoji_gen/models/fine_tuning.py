@@ -19,11 +19,12 @@ from tqdm.auto import tqdm
 import math
 
 class EmojiDataset(Dataset):
-    def __init__(self, data_path: str, tokenizer, image_size: int = 512):
+    def __init__(self, data_path: str, tokenizer, image_size: int = 512, is_sdxl: bool = False):
         with open(data_path, 'r') as f:
             self.data = json.load(f)
         self.tokenizer = tokenizer
         self.image_size = image_size
+        self.is_sdxl = is_sdxl ## not actually needed now
         
     def __len__(self):
         return len(self.data)
@@ -34,7 +35,6 @@ class EmojiDataset(Dataset):
         # Get image
         response = requests.get(item['link'])
         image = Image.open(BytesIO(response.content))
-
         
         
         # Convert RGBA to RGB if needed
@@ -140,14 +140,14 @@ class EmojiFineTuner:
         val_dataset = EmojiDataset(val_data_path, pipe.tokenizer, is_sdxl=is_sdxl)
 
         train_dataloader = DataLoader(
-            train_data_path,
+            train_dataset,
             batch_size=batch_size,
             shuffle=True,
             num_workers=4,
         )
 
         val_dataloader = DataLoader(
-            val_data_path,
+            val_dataset,
             batch_size=batch_size,
             shuffle=False,
             num_workers=4,

@@ -18,7 +18,6 @@ from emoji_gen.config import *
 from emoji_gen.config import (
     TRAIN_DATA_PATH,
     VAL_DATA_PATH,
-    base_model,
 )
 
 def get_search_space(method: Literal["lora", "dreambooth", "full"], base_model: str) -> Dict[str, Any]:
