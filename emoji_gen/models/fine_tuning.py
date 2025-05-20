@@ -222,10 +222,12 @@ class EmojiFineTuner:
                             device=accelerator.device,
                             dtype=DTYPE 
                         )
+
+                        time_embeds = pipe.unet.time_embedding(time_ids)
                     
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
-                            "time_ids": time_ids
+                            "time_ids": time_embeds
                         }
 
                         noise_pred = pipe.unet(
@@ -291,9 +293,11 @@ class EmojiFineTuner:
                             dtype=DTYPE
                         )
 
+                        time_embeds = pipe.unet.time_embedding(time_ids)
+
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
-                            "time_ids": time_ids
+                            "time_ids": time_embeds
                         }
 
                         noise_pred = pipe.unet(
