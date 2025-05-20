@@ -18,6 +18,7 @@ from emoji_gen.config import *
 from emoji_gen.config import (
     TRAIN_DATA_PATH,
     VAL_DATA_PATH,
+    base_model,
 )
 
 def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str, Any]:
@@ -29,12 +30,23 @@ def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str,
     Returns:
         Dictionary defining the search space for the method
     """
-    # common parameters for all methods
-    common_space = {
-        "learning_rate": tune.loguniform(1e-6, 1e-4),  
-        "batch_size": tune.choice([1]),  
-        "gradient_accumulation_steps": tune.choice([4, 8]), 
-    }
+
+    
+    # common parameters for all methods (SDXL has different parameters)
+    is_sdxl = "xl" in base_model.lower()
+    if is_sdxl:
+        common_space = {
+            "learning_rate": tune.loguniform(1e-6, 3e-5),  # Lower learning rate for XL
+            "batch_size": tune.choice([1]),  # Only batch_size 1 for XL
+            "gradient_accumulation_steps": tune.choice([8, 16]),  # Higher accumulation for XL
+        }
+    else:
+        # common parameters for regular SD
+        common_space = {
+            "learning_rate": tune.loguniform(1e-6, 1e-4),
+            "batch_size": tune.choice([1, 2]),
+            "gradient_accumulation_steps": tune.choice([4, 8]),
+        }
     
     if method == "lora":
         return {
@@ -111,6 +123,15 @@ def tune_hyperparameters(
             tuner = EmojiFineTuner(model_id)
             
             if method == "lora":
+
+                is_sdxl = "xl" in base_model.lower()
+
+                # use lower learning rates for SDXL
+                if is_sdxl and config["learning_rate"] > 1e-5:
+                    config["learning_rate"] = min(config["learning_rate"], 3e-5)
+                
+
+
                 output_path, val_loss = tuner.train_lora(
                     train_data_path=train_data_path,
                     val_data_path=val_data_path,

@@ -34,10 +34,8 @@ class EmojiDataset(Dataset):
         # Get image
         response = requests.get(item['link'])
         image = Image.open(BytesIO(response.content))
+
         
-        # convert palette images to RGBA first
-        if image.mode == 'P':
-            image = image.convert('RGBA')
         
         # Convert RGBA to RGB if needed
         if image.mode == 'RGBA':
@@ -92,26 +90,6 @@ class EmojiFineTuner:
         mixed_precision: str = "fp16",
         seed: int = 42,
     ) -> tuple[str, float]:
-        """
-        Fine-tune model using LoRA (Low-Rank Adaptation)
-        
-        Args:
-            train_data_path: Path to training data JSON
-            val_data_path: Path to validation data JSON
-            model_name: Name for the fine-tuned model
-            lora_rank: Rank for LoRA adaptation
-            lora_alpha: Alpha parameter for LoRA scaling
-            lora_dropout: Dropout probability for LoRA layers
-            learning_rate: Learning rate for training
-            num_epochs: Number of training epochs
-            batch_size: Batch size for training
-            gradient_accumulation_steps: Number of steps to accumulate gradients
-            mixed_precision: Mixed precision training type
-            seed: Random seed for reproducibility
-            
-        Returns:
-            Tuple of (path to the saved model, best validation loss)
-        """
         # Set random seed
         torch.manual_seed(seed)
         
@@ -120,37 +98,34 @@ class EmojiFineTuner:
             gradient_accumulation_steps=gradient_accumulation_steps,
             mixed_precision=mixed_precision,
         )
-        
-        # Load base model
-        self.logger.info(f"Loading base model: {self.base_model_id}")
-        if "xl" in self.base_model_id.lower():
+
+        is_sdxl = "xl" in self.base_model_id.lower()
+
+        if is_sdxl:
             pipe = StableDiffusionXLPipeline.from_pretrained(
                 self.base_model_id,
                 torch_dtype=DTYPE,
                 use_safetensors=True,
                 variant="fp16" if DEVICE == "cuda" else None
             )
+            pipe = pipe.to(DEVICE, dtype=DTYPE)
+
+            # grab hidden size from SDXL
+            text_encoder_hidden_size = pipe.text_encoder.config.hidden_size
+            text_encoder_2_hidden_size = pipe.text_encoder_2.config.hidden_size
         else:
             pipe = StableDiffusionPipeline.from_pretrained(
                 self.base_model_id,
                 torch_dtype=DTYPE,
                 use_safetensors=True,
             )
+            pipe = pipe.to(DEVICE, dtype=DTYPE)
         
-        # Move model to device and set dtype
-        pipe = pipe.to(device=accelerator.device)
-        
-        # Ensure all model components are in the same dtype
-        pipe.vae = pipe.vae.to(dtype=DTYPE)
-        pipe.text_encoder = pipe.text_encoder.to(dtype=DTYPE)
-        pipe.unet = pipe.unet.to(dtype=DTYPE)
-        
-        # create lora config based on the model type
-        if "xl" in self.base_model_id.lower():
+        if is_sdxl:
             target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
         else:
             target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
-            
+        
         lora_config = LoraConfig(
             r=lora_rank,
             lora_alpha=lora_alpha,
@@ -158,157 +133,177 @@ class EmojiFineTuner:
             lora_dropout=lora_dropout,
             bias="none",
         )
-        
-        # Apply LoRA to UNet
+
         pipe.unet = get_peft_model(pipe.unet, lora_config)
-        
-        # Create datasets
-        train_dataset = EmojiDataset(train_data_path, pipe.tokenizer)
-        val_dataset = EmojiDataset(val_data_path, pipe.tokenizer)
-        
-        # Create dataloaders
+
+        train_dataset = EmojiDataset(train_data_path, pipe.tokenizer, is_sdxl=is_sdxl)
+        val_dataset = EmojiDataset(val_data_path, pipe.tokenizer, is_sdxl=is_sdxl)
+
         train_dataloader = DataLoader(
-            train_dataset,
+            train_data_path,
             batch_size=batch_size,
             shuffle=True,
             num_workers=4,
         )
+
         val_dataloader = DataLoader(
-            val_dataset,
+            val_data_path,
             batch_size=batch_size,
             shuffle=False,
             num_workers=4,
         )
-        
-        # Setup optimizer
+
         optimizer = torch.optim.AdamW(
             pipe.unet.parameters(),
             lr=learning_rate,
         )
-        
-        # Setup learning rate scheduler
+
         lr_scheduler = get_scheduler(
             "cosine",
             optimizer=optimizer,
             num_warmup_steps=0,
             num_training_steps=len(train_dataloader) * num_epochs,
         )
-        
-        # Prepare for distributed training
+
         pipe.unet, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
             pipe.unet, optimizer, train_dataloader, val_dataloader, lr_scheduler
         )
+
+        # move encoders to right device after the accelerator is prepared
+        if is_sdxl:
+            pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
+            pipe.text_encoder_2 = pipe.text_encoder_2.to(accelerator.device, dtype=DTYPE)
+            pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
+        else:
+            pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
+            pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
         
-        # Training loop
+        pipe.scheduler = pipe.scheduler.to(accelerator.device)
+
         self.logger.info("Starting training...")
         global_step = 0
         best_val_loss = float('inf')
-        
+
         for epoch in range(num_epochs):
             progress_bar = tqdm(total=len(train_dataloader), disable=not accelerator.is_local_main_process)
             progress_bar.set_description(f"Epoch {epoch}")
-            
-            # Training
+
+            # Training loop
             pipe.unet.train()
             for step, batch in enumerate(train_dataloader):
                 with accelerator.accumulate(pipe.unet):
                     # make sure that data is on the correct device and dtype
-                    batch["pixel_values"] = batch["pixel_values"].to(device=accelerator.device, dtype=DTYPE)
-                    batch["input_ids"] = batch["input_ids"].to(device=accelerator.device)
-                    batch["attention_mask"] = batch["attention_mask"].to(device=accelerator.device)
-                    
-                    # Forward pass
+                    batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, dtype=DTYPE)
+                    batch["input_ids"] = batch["input_ids"].to(accelerator.device)
+
                     latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
                     latents = latents * 0.18215
-                    
+
                     noise = torch.randn_like(latents)
-                    timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],))
+                    timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
                     noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
-                    
-                    encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                    
-                    # add empty added_cond_kwargs for SDXL
-                    added_cond_kwargs = {}
-                    if "xl" in self.base_model_id.lower():
+
+                    # forward pass
+                    if is_sdxl:
+                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
+                        pooled_output = pipe.text_encoder_2(batch["input_ids"])[1] ## need text_embeds from second text encoder
+
                         added_cond_kwargs = {
-                            "text_embeds": torch.zeros((batch["input_ids"].shape[0], 1280), device=accelerator.device, dtype=DTYPE),
-                            "time_ids": torch.zeros((batch["input_ids"].shape[0], 6), device=accelerator.device, dtype=DTYPE)
+                            "text_embeds": pooled_output,
+                            "time_ids": torch.zeros((batch_size, 2), device=accelerator.device, dtype=DTYPE)
                         }
-                    
-                    noise_pred = pipe.unet(noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
-                    
-                    # Calculate loss
+
+                        noise_pred = pipe.unet(
+                            noisy_latents,
+                            timesteps,
+                            encoder_hidden_states,
+                            added_cond_kwargs=added_cond_kwargs
+                        ).sample
+                    else:
+                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
+                        noise_pred = pipe.unet(
+                            noisy_latents,
+                            timesteps,
+                            encoder_hidden_states
+                        ).sample
+
                     loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
                     loss = loss.mean([1, 2, 3]).mean()
-                    
+
                     accelerator.backward(loss)
-                    
+
                     if accelerator.sync_gradients:
                         accelerator.clip_grad_norm_(pipe.unet.parameters(), 1.0)
                         optimizer.step()
                         lr_scheduler.step()
                         optimizer.zero_grad()
+
+                    progress_bar.update(1)
+                    global_step += 1
                     
-                progress_bar.update(1)
-                global_step += 1
-                
-                if global_step % 100 == 0:
-                    self.logger.info(f"Step {global_step}: Loss = {loss.item():.4f}")
+                    if global_step % 100 == 0:
+                        self.logger.info(f"Step {global_step}: Loss = {loss.item():.4f}")
+                    
+                # validation loop
+                pipe.unet.eval()
+                with torch.no_grad():
+                    for batch in val_dataloader:
+                        batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, dtype=DTYPE)
+                        batch["input_ids"] = batch["input_ids"].to(accelerator.device)
+
+                        latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
+                        latents = latents * 0.18215
+                        
+                        noise = torch.randn_like(latents)
+                        timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
+                        noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
+
+                        if is_sdxl:
+                            encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
+                            pooled_output = pipe.text_encoder_2(batch["input_ids"])[1]
+
+                            added_cond_kwargs = {
+                                "text_embeds": pooled_output,
+                                "time_ids": torch.zeros((batch_size, 2), device=accelerator.device, dtype=DTYPE)
+                            }
+
+                            noise_pred = pipe.unet(
+                                noisy_latents,
+                                timesteps,
+                                encoder_hidden_states,
+                                added_cond_kwargs=added_cond_kwargs
+                            ).sample
+                        else:
+                            encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
+                            noise_pred = pipe.unet(
+                                noisy_latents,
+                                timesteps,
+                                encoder_hidden_states
+                            ).sample
+                        
+                        loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
+                        loss = loss.mean([1, 2, 3]).mean()
+
+                        val_loss += loss.item()
+
+                val_loss /= len(val_dataloader)
+                self.logger.info(f"Epoch {epoch}: Validation Loss = {val_loss:.4f}")
+
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    output_path = self.output_dir / model_name
+                    output_path.mkdir(exist_ok=True)
+
+                    pipe.unet.save_pretrained(output_path / "lora_weights")
+                    pipe.save_pretrained(output_path)
+
+                    model_cache.register_model(model_name, str(output_path))
+
+                    self.logger.info(f"Saved best model to {output_path}")
             
-            # Validation
-            pipe.unet.eval()
-            val_loss = 0
-            with torch.no_grad():
-                for batch in val_dataloader:
-                    # make sure data is on the correct device and dtype
-                    batch["pixel_values"] = batch["pixel_values"].to(device=accelerator.device, dtype=DTYPE)
-                    batch["input_ids"] = batch["input_ids"].to(device=accelerator.device)
-                    batch["attention_mask"] = batch["attention_mask"].to(device=accelerator.device)
-                    
-                    latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
-                    latents = latents * 0.18215
-                    
-                    noise = torch.randn_like(latents)
-                    timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],))
-                    noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
-                    
-                    encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                    
-                    # Add empty added_cond_kwargs for SDXL
-                    added_cond_kwargs = {}
-                    if "xl" in self.base_model_id.lower():
-                        added_cond_kwargs = {
-                            "text_embeds": torch.zeros((batch["input_ids"].shape[0], 1280), device=accelerator.device, dtype=DTYPE),
-                            "time_ids": torch.zeros((batch["input_ids"].shape[0], 6), device=accelerator.device, dtype=DTYPE)
-                        }
-                    
-                    noise_pred = pipe.unet(noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
-                    
-                    loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
-                    loss = loss.mean([1, 2, 3]).mean()
-                    val_loss += loss.item()
-            
-            val_loss /= len(val_dataloader)
-            self.logger.info(f"Epoch {epoch}: Validation Loss = {val_loss:.4f}")
-            
-            # Save best model
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                output_path = self.output_dir / model_name
-                output_path.mkdir(exist_ok=True)
-                
-                # Save LoRA weights
-                pipe.unet.save_pretrained(output_path / "lora_weights")
-                
-                # Save full pipeline for inference
-                pipe.save_pretrained(output_path)
-                
-                # Register model in cache
-                model_cache.register_model(model_name, str(output_path))
-                
-                self.logger.info(f"Saved best model to {output_path}")
-        
-        return str(output_path), best_val_loss
+            self.best_val_loss = best_val_loss
+            return str(output_path), best_val_loss
+                            
 
     def train_dreambooth(
         self,
