@@ -21,17 +21,16 @@ from emoji_gen.config import (
     base_model,
 )
 
-def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str, Any]:
+def get_search_space(method: Literal["lora", "dreambooth", "full"], base_model: str) -> Dict[str, Any]:
     """Get the search space for a specific fine-tuning method.
     
     Args:
         method: The fine-tuning method to get the search space for
+        base_model: The base model being fine-tuned
         
     Returns:
         Dictionary defining the search space for the method
     """
-
-    
     # common parameters for all methods (SDXL has different parameters)
     is_sdxl = "xl" in base_model.lower()
     if is_sdxl:
@@ -99,7 +98,6 @@ def tune_hyperparameters(
     Returns:
         Dictionary of best hyperparameters
     """
-
     total_gpu_memory = torch.cuda.get_device_properties(0).total_memory if torch.cuda.is_available() else 0
     memory_limit = total_gpu_memory * 0.85
 
@@ -114,7 +112,7 @@ def tune_hyperparameters(
         )
     
     # get method-specific search space
-    config = get_search_space(method)
+    config = get_search_space(method, base_model)
     
     # define training function
     def train_func(config):
