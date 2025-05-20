@@ -32,7 +32,7 @@ def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str,
     # common parameters for all methods
     common_space = {
         "learning_rate": tune.loguniform(1e-6, 1e-4),  
-        "batch_size": tune.choice([1, 2]),  
+        "batch_size": tune.choice([1]),  
         "gradient_accumulation_steps": tune.choice([4, 8]), 
     }
     
@@ -69,7 +69,7 @@ def get_search_space(method: Literal["lora", "dreambooth", "full"]) -> Dict[str,
 def tune_hyperparameters(
     train_data_path: str,
     val_data_path: str,
-    base_model: str = "runwayml/stable-diffusion-v1-5", 
+    base_model: str = "sd-v1.5", 
     method: Literal["lora", "dreambooth", "full"] = "lora",
     num_samples: int = 2,  
     max_epochs: int = 3
@@ -87,13 +87,18 @@ def tune_hyperparameters(
     Returns:
         Dictionary of best hyperparameters
     """
+
+    total_gpu_memory = torch.cuda.get_device_properties(0).total_memory if torch.cuda.is_available() else 0
+    memory_limit = total_gpu_memory * 0.85
+
     # Initialize Ray with memory constraints
     if not ray.is_initialized():
         ray.init(
             num_cpus=os.cpu_count(),
-            num_gpus=torch.cuda.device_count() if torch.cuda.is_available() else 0,
             local_mode=False,
             # ignore_reinit_error=True
+            # potential memory issues, uncomment this
+            # _memory=memory_limit
         )
     
     # get method-specific search space
@@ -150,12 +155,6 @@ def tune_hyperparameters(
                     grace_period=1
                 ),
                 search_alg=HyperOptSearch(metric="val_loss", mode="min"),
-                resources_per_trial={"cpu": 4, "gpu": 1},
-            ),
-            run_config=ray.air.RunConfig(
-                storage_path=str(output_dir),
-                verbose=1,
-                resources_per_trial={"cpu": 4, "gpu": 1}, 
             ),
             param_space=config,
         )
