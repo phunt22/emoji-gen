@@ -146,7 +146,8 @@ def tune_hyperparameters(
             raise e
     
     try:
-        output_dir = Path("ray_results").absolute()
+        # Create absolute path for ray results
+        output_dir = Path(os.path.abspath("ray_results"))
         output_dir.mkdir(exist_ok=True)
         
         # Create trainable with resource requirements
@@ -172,7 +173,7 @@ def tune_hyperparameters(
             param_space=config,
             run_config=ray.air.RunConfig(
                 name="emoji_tuning",
-                storage_path="ray_results",
+                storage_path=f"file://{output_dir}",
             ),
         )
 
