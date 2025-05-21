@@ -209,8 +209,9 @@ class EmojiFineTuner:
 
                     # forward pass
                     if is_sdxl:
-                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                        pooled_output = pipe.text_encoder_2(batch["input_ids"])[1] ## need text_embeds from second text encoder
+                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0] ## [bs, 77, 1280]
+                        encoder_output = pipe.text_encoder_2(batch["input_ids"])
+                        pooled_output = encoder_output[1] ## [bs, 1280]
 
                         bs = batch["input_ids"].shape[0]
                         target_size = (512,512)
@@ -224,18 +225,11 @@ class EmojiFineTuner:
                         )
                         
                         # Debug logging to understand shapes
-                        print(f"DEBUG: pooled_output shape before reshape: {pooled_output.shape}")
-                        print(f"DEBUG: time_ids shape before reshape: {time_ids.shape}")
+                        print(f"DEBUG: pooled_output shape: {pooled_output.shape}")
+                        print(f"DEBUG: time_ids shape: {time_ids.shape}")
                         
-                        # Ensure pooled_output is 2D [batch_size, features]
-                        if pooled_output.ndim != 2:
-                            pooled_output = pooled_output.reshape(pooled_output.shape[0], -1)
-                            print(f"DEBUG: pooled_output shape after reshape: {pooled_output.shape}")
-                        
-                        # Ensure time_ids is 2D [batch_size, 6]
-                        if time_ids.ndim != 2:
-                            time_ids = time_ids.reshape(bs, -1)
-                            print(f"DEBUG: time_ids shape after reshape: {time_ids.shape}")
+                        # DO NOT RESHAPE POOLED OUTPUT OR TIME IDS
+                        # THEY ARE ALREADY CORRECT SHAPE
                         
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
@@ -250,6 +244,7 @@ class EmojiFineTuner:
                         ).sample
                     else:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
+                        # TODO MIGHT HAVE to DEBUG THIS, see above for reference
                         noise_pred = pipe.unet(
                             noisy_latents,
                             timesteps,
