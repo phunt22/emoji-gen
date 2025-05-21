@@ -303,7 +303,7 @@ class EmojiFineTuner:
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
                                 device=accelerator.device,
-                                dtype=encoder_hidden_states.dtype  # Match input dtype
+                                dtype=torch.float16  # Force fp16 for memory efficiency
                             )
                             
                             # Apply the projection
@@ -360,7 +360,7 @@ class EmojiFineTuner:
                             pooled_output = pooled_output.reshape(1, hidden_dim)
                             print(f"DEBUG: Reshaped 1D pooled_output to: {pooled_output.shape}")
                         
-                        # Keep everything in fp16
+                        # Convert to fp16 if needed
                         if pooled_output.dtype != torch.float16:
                             pooled_output = pooled_output.to(torch.float16)
                             print(f"DEBUG: Converted pooled_output to float16")
@@ -387,7 +387,7 @@ class EmojiFineTuner:
                                 for _ in range(bs)
                             ],
                             device=accelerator.device,
-                            dtype=torch.float16  # Keep in fp16
+                            dtype=torch.float16
                         )
                         
                         print(f"DEBUG: time_ids shape: {time_ids.shape}")
@@ -410,16 +410,24 @@ class EmojiFineTuner:
                         ).sample
                     else:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                        # TODO MIGHT HAVE to DEBUG THIS, see above for reference
+                        # Convert to fp16 for memory efficiency
+                        if encoder_hidden_states.dtype != torch.float16:
+                            encoder_hidden_states = encoder_hidden_states.to(torch.float16)
                         noise_pred = pipe.unet(
                             noisy_latents,
                             timesteps,
                             encoder_hidden_states
                         ).sample
 
+                    # Only convert to fp32 at the very last moment for loss computation
+                    noise_pred = noise_pred.to(torch.float32)
+                    noise = noise.to(torch.float32)
+
+                    # Compute loss in fp32 for numerical stability
                     loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
                     loss = loss.mean([1, 2, 3]).mean()
 
+                    # Let the accelerator handle mixed precision backward pass
                     accelerator.backward(loss)
 
                     if accelerator.sync_gradients:
@@ -468,7 +476,7 @@ class EmojiFineTuner:
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
                                 device=accelerator.device,
-                                dtype=encoder_hidden_states.dtype  # Match input dtype
+                                dtype=torch.float16  # Force fp16 for memory efficiency
                             )
                             
                             # Apply the projection
@@ -548,7 +556,7 @@ class EmojiFineTuner:
                                 for _ in range(bs)
                             ],
                             device=accelerator.device,
-                            dtype=torch.float16  # Keep in fp16
+                            dtype=torch.float16
                         )
                         
                         # Check tensor device and dtype
@@ -576,6 +584,10 @@ class EmojiFineTuner:
                             encoder_hidden_states
                         ).sample
                     
+                    # Only convert to fp32 at the very last moment for loss computation
+                    noise_pred = noise_pred.to(torch.float32)
+                    noise = noise.to(torch.float32)
+
                     loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
                     loss = loss.mean([1, 2, 3]).mean()
 
