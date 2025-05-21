@@ -111,7 +111,7 @@ def tune_hyperparameters(
         ray.init(
             num_cpus=os.cpu_count(),
             num_gpus=1,  # We know we have 1 GPU
-            local_mode=False,
+            # local_mode=False,
         )
         print("DEBUG: Ray initialized")
     
@@ -119,6 +119,7 @@ def tune_hyperparameters(
     config = get_search_space(method, base_model)
     
     # define training function
+    @ray.remote(num_gpus=1)
     def train_func(config):
         try:
             # Force CUDA initialization
