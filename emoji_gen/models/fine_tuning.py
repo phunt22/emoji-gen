@@ -298,17 +298,26 @@ class EmojiFineTuner:
                         
                         # Check if we need to adjust the hidden states dimensions
                         if expected_dim is not None and encoder_hidden_states.shape[-1] != expected_dim:
-                            # Create a projection layer if needed
+                            # Create projection layer and explicitly move to fp16
                             projection = torch.nn.Linear(
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
-                                device=accelerator.device,
-                                dtype=torch.float16  # Force fp16 for memory efficiency
-                            )
+                                device=accelerator.device
+                            ).to(dtype=torch.float16)  # Force weights to fp16
+                            
+                            # Validate input tensor
+                            if torch.isnan(encoder_hidden_states).any() or torch.isinf(encoder_hidden_states).any():
+                                raise ValueError("NaN or Inf found in encoder_hidden_states before projection")
                             
                             # Apply the projection
                             encoder_hidden_states = projection(encoder_hidden_states)
+                            
+                            # Validate output tensor
+                            if torch.isnan(encoder_hidden_states).any() or torch.isinf(encoder_hidden_states).any():
+                                raise ValueError("NaN or Inf found in encoder_hidden_states after projection")
+                            
                             print(f"DEBUG: Adjusted encoder_hidden_states shape: {encoder_hidden_states.shape}")
+                            print(f"DEBUG: Projection layer dtype: {next(projection.parameters()).dtype}")
                             
                             # Verify shape is as expected
                             assert encoder_hidden_states.shape[0] == batch_size, "Batch size changed after projection!"
@@ -402,6 +411,16 @@ class EmojiFineTuner:
                             "time_ids": time_ids
                         }
 
+                        # Validate tensors before UNet forward pass
+                        if torch.isnan(noisy_latents).any() or torch.isinf(noisy_latents).any():
+                            raise ValueError("NaN or Inf found in noisy_latents before UNet")
+                        if torch.isnan(encoder_hidden_states).any() or torch.isinf(encoder_hidden_states).any():
+                            raise ValueError("NaN or Inf found in encoder_hidden_states before UNet")
+                        if torch.isnan(pooled_output).any() or torch.isinf(pooled_output).any():
+                            raise ValueError("NaN or Inf found in pooled_output before UNet")
+                        if torch.isnan(time_ids).any() or torch.isinf(time_ids).any():
+                            raise ValueError("NaN or Inf found in time_ids before UNet")
+
                         noise_pred = pipe.unet(
                             noisy_latents,
                             timesteps,
@@ -413,11 +432,24 @@ class EmojiFineTuner:
                         # Convert to fp16 for memory efficiency
                         if encoder_hidden_states.dtype != torch.float16:
                             encoder_hidden_states = encoder_hidden_states.to(torch.float16)
+                        
+                        # Validate tensors before UNet forward pass
+                        if torch.isnan(noisy_latents).any() or torch.isinf(noisy_latents).any():
+                            raise ValueError("NaN or Inf found in noisy_latents before UNet")
+                        if torch.isnan(encoder_hidden_states).any() or torch.isinf(encoder_hidden_states).any():
+                            raise ValueError("NaN or Inf found in encoder_hidden_states before UNet")
+                            
                         noise_pred = pipe.unet(
                             noisy_latents,
                             timesteps,
                             encoder_hidden_states
                         ).sample
+
+                    # Validate prediction before loss computation
+                    if torch.isnan(noise_pred).any() or torch.isinf(noise_pred).any():
+                        raise ValueError("NaN or Inf found in noise_pred before loss computation")
+                    if torch.isnan(noise).any() or torch.isinf(noise).any():
+                        raise ValueError("NaN or Inf found in noise before loss computation")
 
                     # Only convert to fp32 at the very last moment for loss computation
                     noise_pred = noise_pred.to(torch.float32)
