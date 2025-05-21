@@ -210,6 +210,41 @@ class EmojiFineTuner:
                     # forward pass
                     if is_sdxl:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0] ## [1, 77, 1280] -> [bs, seq_len, hidden_size]
+                        
+                        # Debug the encoder_hidden_states shape
+                        print(f"DEBUG: encoder_hidden_states shape: {encoder_hidden_states.shape}")
+                        
+                        # Get the expected hidden size for SDXL from the UNet config
+                        expected_dim = None
+                        if hasattr(pipe.unet, "config") and hasattr(pipe.unet.config, "cross_attention_dim"):
+                            expected_dim = pipe.unet.config.cross_attention_dim
+                            print(f"DEBUG: UNet expects cross_attention_dim: {expected_dim}")
+                        
+                        # Check if we need to adjust the hidden states dimensions
+                        if expected_dim is not None and encoder_hidden_states.shape[-1] != expected_dim:
+                            print(f"DEBUG: Adjusting encoder_hidden_states from {encoder_hidden_states.shape[-1]} to {expected_dim}")
+                            
+                            # Create a projection layer if needed
+                            projection = torch.nn.Linear(
+                                encoder_hidden_states.shape[-1], 
+                                expected_dim,
+                                device=encoder_hidden_states.device,
+                                dtype=encoder_hidden_states.dtype
+                            )
+                            
+                            # Verify we're preserving batch and sequence dimensions
+                            batch_size, seq_len, _ = encoder_hidden_states.shape
+                            print(f"DEBUG: Preserving batch_size={batch_size}, seq_len={seq_len}")
+                            
+                            # Apply the projection - nn.Linear will only transform the last dimension
+                            encoder_hidden_states = projection(encoder_hidden_states)
+                            print(f"DEBUG: Adjusted encoder_hidden_states shape: {encoder_hidden_states.shape}")
+                            
+                            # Verify shape is as expected
+                            assert encoder_hidden_states.shape[0] == batch_size, "Batch size changed after projection!"
+                            assert encoder_hidden_states.shape[1] == seq_len, "Sequence length changed after projection!"
+                            assert encoder_hidden_states.shape[2] == expected_dim, "Hidden dimension not properly adjusted!"
+                        
                         encoder_output = pipe.text_encoder_2(batch["input_ids"])
                         
                         # Add detailed debug information about encoder outputs
@@ -342,6 +377,41 @@ class EmojiFineTuner:
 
                     if is_sdxl:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
+                        
+                        # Debug the encoder_hidden_states shape
+                        print(f"DEBUG-Val: encoder_hidden_states shape: {encoder_hidden_states.shape}")
+                        
+                        # Get the expected hidden size for SDXL from the UNet config
+                        expected_dim = None
+                        if hasattr(pipe.unet, "config") and hasattr(pipe.unet.config, "cross_attention_dim"):
+                            expected_dim = pipe.unet.config.cross_attention_dim
+                            print(f"DEBUG-Val: UNet expects cross_attention_dim: {expected_dim}")
+                        
+                        # Check if we need to adjust the hidden states dimensions
+                        if expected_dim is not None and encoder_hidden_states.shape[-1] != expected_dim:
+                            print(f"DEBUG-Val: Adjusting encoder_hidden_states from {encoder_hidden_states.shape[-1]} to {expected_dim}")
+                            
+                            # Create a projection layer if needed
+                            projection = torch.nn.Linear(
+                                encoder_hidden_states.shape[-1], 
+                                expected_dim,
+                                device=encoder_hidden_states.device,
+                                dtype=encoder_hidden_states.dtype
+                            )
+                            
+                            # Verify we're preserving batch and sequence dimensions
+                            batch_size, seq_len, _ = encoder_hidden_states.shape
+                            print(f"DEBUG-Val: Preserving batch_size={batch_size}, seq_len={seq_len}")
+                            
+                            # Apply the projection - nn.Linear will only transform the last dimension
+                            encoder_hidden_states = projection(encoder_hidden_states)
+                            print(f"DEBUG-Val: Adjusted encoder_hidden_states shape: {encoder_hidden_states.shape}")
+                            
+                            # Verify shape is as expected
+                            assert encoder_hidden_states.shape[0] == batch_size, "Batch size changed after projection!"
+                            assert encoder_hidden_states.shape[1] == seq_len, "Sequence length changed after projection!"
+                            assert encoder_hidden_states.shape[2] == expected_dim, "Hidden dimension not properly adjusted!"
+                        
                         encoder_output = pipe.text_encoder_2(batch["input_ids"])
                         
                         # Add detailed debug information about encoder outputs
