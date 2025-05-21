@@ -288,8 +288,9 @@ class EmojiFineTuner:
                     if is_sdxl:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0] ## [1, 77, 1280] -> [bs, seq_len, hidden_size]
                         
-                        # Debug the encoder_hidden_states shape
+                        # Debug the encoder_hidden_states shape and dtype
                         print(f"DEBUG: encoder_hidden_states shape: {encoder_hidden_states.shape}")
+                        print(f"DEBUG: encoder_hidden_states dtype: {encoder_hidden_states.dtype}")
                         
                         # Get the expected hidden size for SDXL from the UNet config
                         expected_dim = None
@@ -298,12 +299,13 @@ class EmojiFineTuner:
                         
                         # Check if we need to adjust the hidden states dimensions
                         if expected_dim is not None and encoder_hidden_states.shape[-1] != expected_dim:
-                            # Create projection layer and explicitly move to fp16
+                            # Create projection layer in the same dtype as input
                             projection = torch.nn.Linear(
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
-                                device=accelerator.device
-                            ).to(dtype=torch.float16)  # Force weights to fp16
+                                device=accelerator.device,
+                                dtype=encoder_hidden_states.dtype  # Match input dtype
+                            )
                             
                             # Validate input tensor
                             if torch.isnan(encoder_hidden_states).any() or torch.isinf(encoder_hidden_states).any():
@@ -323,17 +325,24 @@ class EmojiFineTuner:
                             assert encoder_hidden_states.shape[0] == batch_size, "Batch size changed after projection!"
                             assert encoder_hidden_states.shape[2] == expected_dim, "Hidden dimension not properly adjusted!"
                         
+                        # Convert to fp16 after all operations are complete
+                        if encoder_hidden_states.dtype != torch.float16:
+                            encoder_hidden_states = encoder_hidden_states.to(torch.float16)
+                            print(f"DEBUG: Converted encoder_hidden_states to float16 after projection")
+                        
                         encoder_output = pipe.text_encoder_2(batch["input_ids"])
                         
                         # Add detailed debug information about encoder outputs
                         print(f"DEBUG: encoder_output type: {type(encoder_output)}")
                         print(f"DEBUG: encoder_output length: {len(encoder_output) if isinstance(encoder_output, tuple) else 'not tuple'}")
                         print(f"DEBUG: encoder_output[0] shape: {encoder_output[0].shape}")
+                        print(f"DEBUG: encoder_output[0] dtype: {encoder_output[0].dtype}")
                         
                         if isinstance(encoder_output, tuple) and len(encoder_output) > 1:
                             print(f"DEBUG: encoder_output[1] exists: {encoder_output[1] is not None}")
                             if encoder_output[1] is not None:
                                 print(f"DEBUG: encoder_output[1] shape: {encoder_output[1].shape}")
+                                print(f"DEBUG: encoder_output[1] dtype: {encoder_output[1].dtype}")
                         
                         # Try to get pooled output from SDXL text_encoder_2
                         if isinstance(encoder_output, tuple) and len(encoder_output) > 1 and encoder_output[1] is not None:
@@ -369,17 +378,13 @@ class EmojiFineTuner:
                             pooled_output = pooled_output.reshape(1, hidden_dim)
                             print(f"DEBUG: Reshaped 1D pooled_output to: {pooled_output.shape}")
                         
-                        # Convert to fp16 if needed
+                        # Convert to fp16 after all operations are complete
                         if pooled_output.dtype != torch.float16:
                             pooled_output = pooled_output.to(torch.float16)
                             print(f"DEBUG: Converted pooled_output to float16")
                         
-                        # Convert encoder_hidden_states to fp16 if needed
-                        if encoder_hidden_states.dtype != torch.float16:
-                            encoder_hidden_states = encoder_hidden_states.to(torch.float16)
-                            print(f"DEBUG: Converted encoder_hidden_states to float16")
-                        
                         print(f"DEBUG: Final pooled_output shape: {pooled_output.shape}")
+                        print(f"DEBUG: Final pooled_output dtype: {pooled_output.dtype}")
                         
                         # Get model's expected dimensions for debugging
                         if hasattr(pipe.unet, "config"):
@@ -400,6 +405,7 @@ class EmojiFineTuner:
                         )
                         
                         print(f"DEBUG: time_ids shape: {time_ids.shape}")
+                        print(f"DEBUG: time_ids dtype: {time_ids.dtype}")
                         
                         # Check tensor device and dtype
                         print(f"DEBUG: pooled_output device: {pooled_output.device}, dtype: {pooled_output.dtype}")
