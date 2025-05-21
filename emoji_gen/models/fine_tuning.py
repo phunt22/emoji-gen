@@ -134,6 +134,7 @@ class EmojiFineTuner:
         accelerator = Accelerator(
             gradient_accumulation_steps=gradient_accumulation_steps,
             mixed_precision=mixed_precision,
+            device_placement=True,  # Force device placement
         )
         
         print(f"DEBUG: TORCH_CUDA_AVAILABLE: {torch.cuda.is_available()}")
@@ -166,16 +167,16 @@ class EmojiFineTuner:
                 self.base_model_id,
                 torch_dtype=DTYPE,
                 use_safetensors=True,
-                variant="fp16" if DEVICE == "cuda" else None,
+                variant="fp16" if torch.cuda.is_available() else None,  # Use fp16 if CUDA is available
             )
-            pipe = pipe.to(DEVICE, dtype=DTYPE)
+            pipe = pipe.to(accelerator.device, dtype=DTYPE)  # Use accelerator's device
         else:
             pipe = StableDiffusionPipeline.from_pretrained(
                 self.base_model_id,
                 torch_dtype=DTYPE,
                 use_safetensors=True,
             )
-            pipe = pipe.to(DEVICE, dtype=DTYPE)
+            pipe = pipe.to(accelerator.device, dtype=DTYPE)  # Use accelerator's device
         
         if is_sdxl:
             target_modules = ["to_q", "to_k", "to_v", "to_out.0"]

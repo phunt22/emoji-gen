@@ -111,7 +111,6 @@ def tune_hyperparameters(
         ray.init(
             num_cpus=os.cpu_count(),
             num_gpus=1,  # We know we have 1 GPU
-            # local_mode=False,
         )
         print("DEBUG: Ray initialized")
     
@@ -119,7 +118,6 @@ def tune_hyperparameters(
     config = get_search_space(method, base_model)
     
     # define training function
-    @ray.remote(num_gpus=1)
     def train_func(config):
         try:
             # Force CUDA initialization
@@ -173,7 +171,7 @@ def tune_hyperparameters(
         
         # Run hyperparameter search
         tuner = tune.Tuner(
-            tune.with_parameters(train_func),
+            tune.with_parameters(train_func.remote), ## add remote to test ray with gpu
             tune_config=tune.TuneConfig(
                 num_samples=num_samples,
                 scheduler=ASHAScheduler(
@@ -186,6 +184,8 @@ def tune_hyperparameters(
             ),
             param_space=config,
             run_config=ray.air.RunConfig(
+                name="emoji_tuning",
+                local_dir="ray_results",
             ),
         )
         
