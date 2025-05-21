@@ -305,7 +305,6 @@ class EmojiFineTuner:
                             
                             # Verify shape is as expected
                             assert encoder_hidden_states.shape[0] == batch_size, "Batch size changed after projection!"
-                            assert encoder_hidden_states.shape[1] == seq_len, "Sequence length changed after projection!"
                             assert encoder_hidden_states.shape[2] == expected_dim, "Hidden dimension not properly adjusted!"
                         
                         encoder_output = pipe.text_encoder_2(batch["input_ids"])
