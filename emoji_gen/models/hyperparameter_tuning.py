@@ -105,7 +105,7 @@ class HyperparameterTuner:
             scheduler=scheduler,
             search_alg=search_alg,
             resources_per_trial={"gpu": self.gpu_per_trial},
-            local_dir=str(self.output_dir / "ray_results"),
+            storage_path=str(self.output_dir / "ray_results"),
             name="emoji_tuning",
         )
 

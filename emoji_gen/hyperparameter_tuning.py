@@ -172,9 +172,10 @@ def tune_hyperparameters(
             param_space=config,
             run_config=ray.air.RunConfig(
                 name="emoji_tuning",
-                local_dir="ray_results",
+                storage_path="ray_results",
             ),
         )
+
         
         # Run the tuning
         results = tuner.fit()

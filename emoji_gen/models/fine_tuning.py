@@ -135,6 +135,7 @@ class EmojiFineTuner:
             gradient_accumulation_steps=gradient_accumulation_steps,
             mixed_precision=mixed_precision,
         )
+
         
         print(f"DEBUG: TORCH_CUDA_AVAILABLE: {torch.cuda.is_available()}")
         print(f"DEBUG: CUDA_DEVICE_COUNT: {torch.cuda.device_count()}")
