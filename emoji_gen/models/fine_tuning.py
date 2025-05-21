@@ -179,7 +179,6 @@ class EmojiFineTuner:
         # memory optimization
         pipe.unet.enable_gradient_checkpointing()   # checkpoints every block
         pipe.enable_attention_slicing()             # 2-way slice for all attention
-        pipe.enable_xformers_memory_efficient_attention()  # reduces attention memory usage
         pipe.enable_vae_slicing()  # slice VAE operations to save memory
         pipe.vae.to(memory_format=torch.channels_last)  # fp16 channels_last = smaller
         
