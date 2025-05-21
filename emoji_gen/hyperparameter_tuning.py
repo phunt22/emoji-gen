@@ -104,6 +104,7 @@ def tune_hyperparameters(
     if not ray.is_initialized():
         ray.init(
             num_cpus=os.cpu_count(),
+            num_gpus=1 if torch.cuda.is_available() else 0,  # Explicitly set GPU count
             local_mode=False,
             # ignore_reinit_error=True
             # potential memory issues, uncomment this
@@ -116,6 +117,11 @@ def tune_hyperparameters(
     # define training function
     def train_func(config):
         try:
+            # Set CUDA device for this process
+            if torch.cuda.is_available():
+                torch.cuda.set_device(0)
+                print(f"DEBUG: Set CUDA device to {torch.cuda.current_device()}")
+            
             model_id = get_model_path(base_model)
             tuner = EmojiFineTuner(model_id)
             

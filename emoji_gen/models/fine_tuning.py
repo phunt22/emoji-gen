@@ -103,6 +103,15 @@ class EmojiFineTuner:
         print("\nDEBUG: PyTorch and CUDA Setup:")
         print(f"PyTorch version: {torch.__version__}")
         print(f"PyTorch path: {torch.__file__}")
+        
+        # Initialize CUDA if available
+        if torch.cuda.is_available():
+            # Make sure we're using the right device
+            torch.cuda.set_device(0)
+            # Clear any existing CUDA memory
+            torch.cuda.empty_cache()
+            print("DEBUG: CUDA initialized and memory cleared")
+        
         print(f"CUDA available: {torch.cuda.is_available()}")
         print(f"CUDA version: {torch.version.cuda if torch.cuda.is_available() else 'N/A'}")
         print(f"CUDA device count: {torch.cuda.device_count() if torch.cuda.is_available() else 0}")
@@ -110,11 +119,8 @@ class EmojiFineTuner:
             print(f"CUDA device name: {torch.cuda.get_device_name(0)}")
             print(f"CUDA current device: {torch.cuda.current_device()}")
             print(f"CUDA device capability: {torch.cuda.get_device_capability(0)}")
-        print(f"CUDA is built: {torch.cuda.is_built()}")
-        print(f"CUDA is initialized: {torch.cuda.is_initialized()}")
-        print(f"Environment variables:")
-        print(f"  CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not set')}")
-        print(f"  NVIDIA_VISIBLE_DEVICES: {os.environ.get('NVIDIA_VISIBLE_DEVICES', 'Not set')}")
+            print(f"CUDA memory allocated: {torch.cuda.memory_allocated(0) / 1024**2:.2f} MB")
+            print(f"CUDA memory cached: {torch.cuda.memory_reserved(0) / 1024**2:.2f} MB")
         print("\n")
         
         # Initialize accelerator
