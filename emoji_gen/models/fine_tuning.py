@@ -211,8 +211,10 @@ class EmojiFineTuner:
                     if is_sdxl:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0] ## [1, 77, 1280] -> [bs, seq_len, hidden_size]
                         encoder_output = pipe.text_encoder_2(batch["input_ids"])
-                        # Get the pooled output by taking mean across sequence dimension
-                        pooled_output = encoder_output[0].mean(dim=1) ## [bs, hidden_size] --> [1, 1280] (expected input dims)
+                        # Get the pooled output by taking mean across sequence dimension only
+                        pooled_output = encoder_output[0].mean(dim=1, keepdim=False) ## [bs, hidden_size] --> [1, 1280] (expected input dims)
+
+                        
 
                         bs = batch["input_ids"].shape[0]
                         target_size = (512,512)
