@@ -102,14 +102,18 @@ def tune_hyperparameters(
 
     # Initialize Ray with memory constraints
     if not ray.is_initialized():
+        print("DEBUG: Initializing Ray...")
+        print(f"DEBUG: CUDA available: {torch.cuda.is_available()}")
+        print(f"DEBUG: CUDA device count: {torch.cuda.device_count()}")
+        if torch.cuda.is_available():
+            print(f"DEBUG: CUDA device name: {torch.cuda.get_device_name(0)}")
+        
         ray.init(
             num_cpus=os.cpu_count(),
-            num_gpus=1 if torch.cuda.is_available() else 0,  # Explicitly set GPU count
+            num_gpus=torch.cuda.device_count(),  # Use actual GPU count
             local_mode=False,
-            # ignore_reinit_error=True
-            # potential memory issues, uncomment this
-            # _memory=memory_limit
         )
+        print("DEBUG: Ray initialized")
     
     # get method-specific search space
     config = get_search_space(method, base_model)
@@ -117,10 +121,12 @@ def tune_hyperparameters(
     # define training function
     def train_func(config):
         try:
-            # Set CUDA device for this process
+            # Force CUDA initialization
             if torch.cuda.is_available():
                 torch.cuda.set_device(0)
                 print(f"DEBUG: Set CUDA device to {torch.cuda.current_device()}")
+                print(f"DEBUG: CUDA device name: {torch.cuda.get_device_name(0)}")
+                print(f"DEBUG: CUDA memory allocated: {torch.cuda.memory_allocated(0) / 1024**2:.2f} MB")
             
             model_id = get_model_path(base_model)
             tuner = EmojiFineTuner(model_id)

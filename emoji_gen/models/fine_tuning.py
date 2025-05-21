@@ -110,7 +110,13 @@ class EmojiFineTuner:
             torch.cuda.set_device(0)
             # Clear any existing CUDA memory
             torch.cuda.empty_cache()
+            # Force CUDA initialization
+            torch.cuda.init()
             print("DEBUG: CUDA initialized and memory cleared")
+            
+            # Verify CUDA is working
+            test_tensor = torch.zeros(1, device='cuda')
+            print(f"DEBUG: CUDA test tensor created: {test_tensor.device}")
         
         print(f"CUDA available: {torch.cuda.is_available()}")
         print(f"CUDA version: {torch.version.cuda if torch.cuda.is_available() else 'N/A'}")
@@ -128,7 +134,6 @@ class EmojiFineTuner:
         accelerator = Accelerator(
             gradient_accumulation_steps=gradient_accumulation_steps,
             mixed_precision=mixed_precision,
-            device_placement=True,  # Explicitly enable device placement
         )
         
         print(f"DEBUG: TORCH_CUDA_AVAILABLE: {torch.cuda.is_available()}")
