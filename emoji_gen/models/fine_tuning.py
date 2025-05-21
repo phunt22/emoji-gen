@@ -222,20 +222,20 @@ class EmojiFineTuner:
                             device=accelerator.device,
                             dtype=DTYPE 
                         )
-                                                
-                        # SDXL text_embeds should be of shape [batch_size, 1280]
-                        # Fix for dimension mismatches in UNet
-                        if hasattr(pipe.text_encoder_2.config, "projection_dim"):
-                            # Get the expected embedding size from the model config
-                            expected_dim = pipe.text_encoder_2.config.projection_dim
-                            # Ensure pooled_output has the right shape without flattening everything
-                            print(f"DEBUG-Train: pooled_output.shape={pooled_output.shape}, expected_dim={expected_dim}")
-                            if pooled_output.shape[-1] != expected_dim and pooled_output.ndim > 1:
-                                pooled_output = pooled_output.reshape(pooled_output.shape[0], expected_dim)
-                                print(f"DEBUG-Train: reshaped to {pooled_output.shape}")
-                    
-                        # Check time_ids for debugging
-                        print(f"DEBUG-Train: time_ids.shape={time_ids.shape}")
+                        
+                        # Debug logging to understand shapes
+                        print(f"DEBUG: pooled_output shape before reshape: {pooled_output.shape}")
+                        print(f"DEBUG: time_ids shape before reshape: {time_ids.shape}")
+                        
+                        # Ensure pooled_output is 2D [batch_size, features]
+                        if pooled_output.ndim != 2:
+                            pooled_output = pooled_output.reshape(pooled_output.shape[0], -1)
+                            print(f"DEBUG: pooled_output shape after reshape: {pooled_output.shape}")
+                        
+                        # Ensure time_ids is 2D [batch_size, 6]
+                        if time_ids.ndim != 2:
+                            time_ids = time_ids.reshape(bs, -1)
+                            print(f"DEBUG: time_ids shape after reshape: {time_ids.shape}")
                         
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
