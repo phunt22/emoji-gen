@@ -110,7 +110,7 @@ def tune_hyperparameters(
         
         ray.init(
             num_cpus=os.cpu_count(),
-            num_gpus=torch.cuda.device_count(),  # Use actual GPU count
+            num_gpus=1,  # We know we have 1 GPU
             local_mode=False,
         )
         print("DEBUG: Ray initialized")
@@ -132,14 +132,11 @@ def tune_hyperparameters(
             tuner = EmojiFineTuner(model_id)
             
             if method == "lora":
-
                 is_sdxl = "xl" in base_model.lower()
 
                 # use lower learning rates for SDXL
                 if is_sdxl and config["learning_rate"] > 1e-5:
                     config["learning_rate"] = min(config["learning_rate"], 3e-5)
-                
-
 
                 output_path, val_loss = tuner.train_lora(
                     train_data_path=train_data_path,
@@ -187,6 +184,9 @@ def tune_hyperparameters(
                 search_alg=HyperOptSearch(metric="val_loss", mode="min"),
             ),
             param_space=config,
+            run_config=ray.air.RunConfig(
+                resources_per_trial={"gpu": 1},  # Request 1 GPU per trial
+            ),
         )
         
         # Run the tuning
