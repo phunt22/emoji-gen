@@ -9,7 +9,8 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 # GPU settings
 CUDA_ENABLED = torch.cuda.is_available()
 DEVICE = 'cuda' if CUDA_ENABLED else 'cpu'
-DTYPE = torch.float16 if CUDA_ENABLED else torch.float32
+# Using float32 for better compatibility, even though it uses more memory
+DTYPE = torch.float32
 
 # Model defaults
 DEFAULT_MODEL = 'sd-v1.5'

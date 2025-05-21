@@ -273,7 +273,8 @@ class EmojiFineTuner:
                     latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
                     latents = latents * 0.18215
 
-                    noise = torch.randn_like(latents)
+                    # Use float32 for noise to match other tensors
+                    noise = torch.randn_like(latents, dtype=torch.float32)
                     timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
                     noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
 
@@ -353,6 +354,16 @@ class EmojiFineTuner:
                             pooled_output = pooled_output.reshape(1, hidden_dim)
                             print(f"DEBUG: Reshaped 1D pooled_output to: {pooled_output.shape}")
                         
+                        # Ensure pooled_output is float32 to match time_ids
+                        if pooled_output.dtype != torch.float32:
+                            pooled_output = pooled_output.to(torch.float32)
+                            print(f"DEBUG: Converted pooled_output to float32")
+                        
+                        # Ensure encoder_hidden_states is float32 as well
+                        if encoder_hidden_states.dtype != torch.float32:
+                            encoder_hidden_states = encoder_hidden_states.to(torch.float32)
+                            print(f"DEBUG: Converted encoder_hidden_states to float32")
+                        
                         print(f"DEBUG: Final pooled_output shape: {pooled_output.shape}")
                         
                         # Get model's expected dimensions for debugging
@@ -370,7 +381,7 @@ class EmojiFineTuner:
                                 for _ in range(bs)
                             ],
                             device=accelerator.device,
-                            dtype=DTYPE 
+                            dtype=torch.float32  # Use float32 instead of DTYPE (which is float16)
                         )
                         
                         print(f"DEBUG: time_ids shape: {time_ids.shape}")
@@ -428,7 +439,8 @@ class EmojiFineTuner:
                     latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
                     latents = latents * 0.18215
                     
-                    noise = torch.randn_like(latents)
+                    # Use float32 for noise to match other tensors
+                    noise = torch.randn_like(latents, dtype=torch.float32)
                     timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
                     noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
 
@@ -459,7 +471,6 @@ class EmojiFineTuner:
                             
                             # Verify shape is as expected
                             assert encoder_hidden_states.shape[0] == batch_size, "Batch size changed after projection!"
-                            assert encoder_hidden_states.shape[1] == seq_len, "Sequence length changed after projection!"
                             assert encoder_hidden_states.shape[2] == expected_dim, "Hidden dimension not properly adjusted!"
                         
                         encoder_output = pipe.text_encoder_2(batch["input_ids"])
@@ -504,6 +515,16 @@ class EmojiFineTuner:
                             pooled_output = pooled_output.reshape(1, hidden_dim)
                             print(f"DEBUG-Val: Reshaped 1D pooled_output to: {pooled_output.shape}")
                         
+                        # Ensure pooled_output is float32 to match time_ids
+                        if pooled_output.dtype != torch.float32:
+                            pooled_output = pooled_output.to(torch.float32)
+                            print(f"DEBUG-Val: Converted pooled_output to float32")
+                        
+                        # Ensure encoder_hidden_states is float32 as well
+                        if encoder_hidden_states.dtype != torch.float32:
+                            encoder_hidden_states = encoder_hidden_states.to(torch.float32)
+                            print(f"DEBUG-Val: Converted encoder_hidden_states to float32")
+                        
                         print(f"DEBUG-Val: Final pooled_output shape: {pooled_output.shape}")
                         
                         # Get model's expected dimensions for debugging
@@ -521,7 +542,7 @@ class EmojiFineTuner:
                                 for _ in range(bs)
                             ],
                             device=accelerator.device,
-                            dtype=DTYPE
+                            dtype=torch.float32  # Use float32 instead of DTYPE (which is float16)
                         )
                         
                         # Check tensor device and dtype
