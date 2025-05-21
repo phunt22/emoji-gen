@@ -186,7 +186,6 @@ def tune_hyperparameters(
             ),
             param_space=config,
             run_config=ray.air.RunConfig(
-                resources_per_trial={"gpu": 1},  # Request 1 GPU per trial
             ),
         )
         
