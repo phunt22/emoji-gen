@@ -303,7 +303,7 @@ class EmojiFineTuner:
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
                                 device=accelerator.device,
-                                dtype=torch.float16  # Keep in fp16
+                                dtype=encoder_hidden_states.dtype  # Match input dtype
                             )
                             
                             # Apply the projection
@@ -365,7 +365,7 @@ class EmojiFineTuner:
                             pooled_output = pooled_output.to(torch.float16)
                             print(f"DEBUG: Converted pooled_output to float16")
                         
-                        # Keep encoder_hidden_states in fp16
+                        # Convert encoder_hidden_states to fp16 if needed
                         if encoder_hidden_states.dtype != torch.float16:
                             encoder_hidden_states = encoder_hidden_states.to(torch.float16)
                             print(f"DEBUG: Converted encoder_hidden_states to float16")
@@ -468,7 +468,7 @@ class EmojiFineTuner:
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
                                 device=accelerator.device,
-                                dtype=torch.float16  # Keep in fp16
+                                dtype=encoder_hidden_states.dtype  # Match input dtype
                             )
                             
                             # Apply the projection
@@ -521,12 +521,12 @@ class EmojiFineTuner:
                             pooled_output = pooled_output.reshape(1, hidden_dim)
                             print(f"DEBUG-Val: Reshaped 1D pooled_output to: {pooled_output.shape}")
                         
-                            # Keep everything in fp16
+                            # Convert to fp16 if needed, but only after all operations are done
                             if pooled_output.dtype != torch.float16:
                                 pooled_output = pooled_output.to(torch.float16)
                                 print(f"DEBUG-Val: Converted pooled_output to float16")
                             
-                            # Keep encoder_hidden_states in fp16
+                            # Convert encoder_hidden_states to fp16 if needed
                             if encoder_hidden_states.dtype != torch.float16:
                                 encoder_hidden_states = encoder_hidden_states.to(torch.float16)
                                 print(f"DEBUG-Val: Converted encoder_hidden_states to float16")
