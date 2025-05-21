@@ -97,36 +97,16 @@ def tune_hyperparameters(
     Returns:
         Dictionary of best hyperparameters
     """
-    total_gpu_memory = torch.cuda.get_device_properties(0).total_memory if torch.cuda.is_available() else 0
-    memory_limit = total_gpu_memory * 0.85
-
-    # Initialize Ray with memory constraints
+    # Initialize Ray if not already initialized
     if not ray.is_initialized():
-        print("DEBUG: Initializing Ray...")
-        print(f"DEBUG: CUDA available: {torch.cuda.is_available()}")
-        print(f"DEBUG: CUDA device count: {torch.cuda.device_count()}")
-        if torch.cuda.is_available():
-            print(f"DEBUG: CUDA device name: {torch.cuda.get_device_name(0)}")
-        
-        ray.init(
-            num_cpus=os.cpu_count(),
-            num_gpus=1,  # We know we have 1 GPU
-        )
-        print("DEBUG: Ray initialized")
-    
+        ray.init()
+
     # get method-specific search space
     config = get_search_space(method, base_model)
     
     # define training function
     def train_func(config):
         try:
-            # Force CUDA initialization
-            if torch.cuda.is_available():
-                torch.cuda.set_device(0)
-                print(f"DEBUG: Set CUDA device to {torch.cuda.current_device()}")
-                print(f"DEBUG: CUDA device name: {torch.cuda.get_device_name(0)}")
-                print(f"DEBUG: CUDA memory allocated: {torch.cuda.memory_allocated(0) / 1024**2:.2f} MB")
-            
             model_id = get_model_path(base_model)
             tuner = EmojiFineTuner(model_id)
             
@@ -169,9 +149,15 @@ def tune_hyperparameters(
         output_dir = Path("ray_results").absolute()
         output_dir.mkdir(exist_ok=True)
         
+        # Create trainable with resource requirements
+        trainable = tune.with_resources(
+            tune.with_parameters(train_func),
+            {"cpu": 4, "gpu": 1}  # Request 1 GPU per trial
+        )
+        
         # Run hyperparameter search
         tuner = tune.Tuner(
-            tune.with_parameters(train_func.remote), ## add remote to test ray with gpu
+            trainable,
             tune_config=tune.TuneConfig(
                 num_samples=num_samples,
                 scheduler=ASHAScheduler(
@@ -181,6 +167,7 @@ def tune_hyperparameters(
                     grace_period=1
                 ),
                 search_alg=HyperOptSearch(metric="val_loss", mode="min"),
+                max_concurrent_trials=1  # Run one trial at a time, we have 1 GPU
             ),
             param_space=config,
             run_config=ray.air.RunConfig(

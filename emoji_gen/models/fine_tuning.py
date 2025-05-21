@@ -134,7 +134,6 @@ class EmojiFineTuner:
         accelerator = Accelerator(
             gradient_accumulation_steps=gradient_accumulation_steps,
             mixed_precision=mixed_precision,
-            device_placement=True,  # Force device placement
         )
         
         print(f"DEBUG: TORCH_CUDA_AVAILABLE: {torch.cuda.is_available()}")
@@ -167,16 +166,17 @@ class EmojiFineTuner:
                 self.base_model_id,
                 torch_dtype=DTYPE,
                 use_safetensors=True,
-                variant="fp16" if torch.cuda.is_available() else None,  # Use fp16 if CUDA is available
+                variant="fp16" if torch.cuda.is_available() else None,
             )
-            pipe = pipe.to(accelerator.device, dtype=DTYPE)  # Use accelerator's device
         else:
             pipe = StableDiffusionPipeline.from_pretrained(
                 self.base_model_id,
                 torch_dtype=DTYPE,
                 use_safetensors=True,
             )
-            pipe = pipe.to(accelerator.device, dtype=DTYPE)  # Use accelerator's device
+        
+        # Move pipeline to accelerator device
+        pipe = pipe.to(accelerator.device, dtype=DTYPE)
         
         if is_sdxl:
             target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
@@ -201,6 +201,8 @@ class EmojiFineTuner:
             batch_size=batch_size,
             shuffle=True,
             num_workers=4,
+            pin_memory=True,
+            persistent_workers=True,
         )
 
         val_dataloader = DataLoader(
@@ -208,6 +210,8 @@ class EmojiFineTuner:
             batch_size=batch_size,
             shuffle=False,
             num_workers=4,
+            pin_memory=True,
+            persistent_workers=True,
         )
 
         optimizer = torch.optim.AdamW(
@@ -222,14 +226,14 @@ class EmojiFineTuner:
             num_training_steps=len(train_dataloader) * num_epochs,
         )        
 
-        # move encoders to right device after the accelerator is prepared
-        if is_sdxl:
-            pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
-            pipe.text_encoder_2 = pipe.text_encoder_2.to(accelerator.device, dtype=DTYPE)
-            pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
-        else:
-            pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
-            pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
+        # # move encoders to right device after the accelerator is prepared
+        # if is_sdxl:
+        #     pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
+        #     pipe.text_encoder_2 = pipe.text_encoder_2.to(accelerator.device, dtype=DTYPE)
+        #     pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
+        # else:
+        #     pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
+        #     pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
 
         # prep these with the accelerator
         pipe.unet, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
@@ -237,13 +241,13 @@ class EmojiFineTuner:
         )
 
         # move encoders again to make sure
-        if is_sdxl:
-            pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
-            pipe.text_encoder_2 = pipe.text_encoder_2.to(accelerator.device, dtype=DTYPE)
-            pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
-        else:
-            pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
-            pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
+        # if is_sdxl:
+        #     pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
+        #     pipe.text_encoder_2 = pipe.text_encoder_2.to(accelerator.device, dtype=DTYPE)
+        #     pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
+        # else:
+        #     pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
+        #     pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
         
         print(f"DEBUG: pipe.unet.device: {pipe.unet.device}")
         print(f"DEBUG: pipe.text_encoder.device: {pipe.text_encoder.device}")
@@ -283,25 +287,18 @@ class EmojiFineTuner:
                         expected_dim = None
                         if hasattr(pipe.unet, "config") and hasattr(pipe.unet.config, "cross_attention_dim"):
                             expected_dim = pipe.unet.config.cross_attention_dim
-                            print(f"DEBUG: UNet expects cross_attention_dim: {expected_dim}")
                         
                         # Check if we need to adjust the hidden states dimensions
                         if expected_dim is not None and encoder_hidden_states.shape[-1] != expected_dim:
-                            print(f"DEBUG: Adjusting encoder_hidden_states from {encoder_hidden_states.shape[-1]} to {expected_dim}")
-                            
                             # Create a projection layer if needed
                             projection = torch.nn.Linear(
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
-                                device=encoder_hidden_states.device,
+                                device=accelerator.device,
                                 dtype=encoder_hidden_states.dtype
                             )
                             
-                            # Verify we're preserving batch and sequence dimensions
-                            batch_size, seq_len, _ = encoder_hidden_states.shape
-                            print(f"DEBUG: Preserving batch_size={batch_size}, seq_len={seq_len}")
-                            
-                            # Apply the projection - nn.Linear will only transform the last dimension
+                            # Apply the projection
                             encoder_hidden_states = projection(encoder_hidden_states)
                             print(f"DEBUG: Adjusted encoder_hidden_states shape: {encoder_hidden_states.shape}")
                             
@@ -342,13 +339,8 @@ class EmojiFineTuner:
                                 else:
                                     # Fallback to mean with keepdim to preserve dimensions
                                     pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
-                                    print(f"DEBUG: Using mean with keepdim=True as pooled_output: {pooled_output.shape}")
                             else:
-                                # Unexpected shape, try to adapt
-                                print(f"DEBUG: Unexpected tensor dimension: {encoder_output[0].ndim}")
-                                # Reshape to expected format
                                 pooled_output = encoder_output[0].reshape(1, -1)
-                                print(f"DEBUG: Reshaped to: {pooled_output.shape}")
                         
                         # Ensure we have the right shape [batch_size, hidden_dim]
                         if len(pooled_output.shape) == 1:
@@ -450,25 +442,18 @@ class EmojiFineTuner:
                         expected_dim = None
                         if hasattr(pipe.unet, "config") and hasattr(pipe.unet.config, "cross_attention_dim"):
                             expected_dim = pipe.unet.config.cross_attention_dim
-                            print(f"DEBUG-Val: UNet expects cross_attention_dim: {expected_dim}")
                         
                         # Check if we need to adjust the hidden states dimensions
                         if expected_dim is not None and encoder_hidden_states.shape[-1] != expected_dim:
-                            print(f"DEBUG-Val: Adjusting encoder_hidden_states from {encoder_hidden_states.shape[-1]} to {expected_dim}")
-                            
                             # Create a projection layer if needed
                             projection = torch.nn.Linear(
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
-                                device=encoder_hidden_states.device,
+                                device=accelerator.device,
                                 dtype=encoder_hidden_states.dtype
                             )
                             
-                            # Verify we're preserving batch and sequence dimensions
-                            batch_size, seq_len, _ = encoder_hidden_states.shape
-                            print(f"DEBUG-Val: Preserving batch_size={batch_size}, seq_len={seq_len}")
-                            
-                            # Apply the projection - nn.Linear will only transform the last dimension
+                            # Apply the projection
                             encoder_hidden_states = projection(encoder_hidden_states)
                             print(f"DEBUG-Val: Adjusted encoder_hidden_states shape: {encoder_hidden_states.shape}")
                             
@@ -493,21 +478,13 @@ class EmojiFineTuner:
                         if isinstance(encoder_output, tuple) and len(encoder_output) > 1 and encoder_output[1] is not None:
                             # Some SDXL models have pooled output as second item
                             pooled_output = encoder_output[1]
-                            print(f"DEBUG-Val: Using pooled_output from encoder_output[1]: {pooled_output.shape}")
                         else:
-                            # Check if we have a 2D tensor with shape [batch_size, hidden_dim]
                             if encoder_output[0].ndim == 2:
-                                # This is already the right shape (batch_size, hidden_dim)
                                 pooled_output = encoder_output[0]
-                                print(f"DEBUG-Val: Found 2D tensor with correct shape: {pooled_output.shape}")
                             elif encoder_output[0].ndim == 3:
-                                # Get the pooled output by taking CLS token or using mean
                                 if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
-                                    # Using CLS token (first token) is often better than mean
                                     pooled_output = encoder_output[0][:, 0, :]
-                                    print(f"DEBUG-Val: Using CLS token as pooled_output: {pooled_output.shape}")
                                 else:
-                                    # Fallback to mean with keepdim to preserve dimensions
                                     pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
                                     print(f"DEBUG-Val: Using mean with keepdim=True as pooled_output: {pooled_output.shape}")
                             else:
@@ -519,7 +496,6 @@ class EmojiFineTuner:
                         
                         # Ensure we have the right shape [batch_size, hidden_dim]
                         if len(pooled_output.shape) == 1:
-                            # Handle 1D tensor case
                             if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
                                 hidden_dim = pipe.text_encoder_2.config.projection_dim
                             else:
@@ -537,7 +513,6 @@ class EmojiFineTuner:
                             if hasattr(pipe.unet.config, "addition_time_embed_dim"):
                                 print(f"DEBUG-Val: UNet expects addition_time_embed_dim: {pipe.unet.config.addition_time_embed_dim}")
 
-                        # correcting tensor size/shape
                         bs = batch["input_ids"].shape[0]
                         target_size = (512, 512)
                         time_ids = torch.tensor(
