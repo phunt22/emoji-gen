@@ -111,13 +111,10 @@ class EmojiFineTuner:
                 self.base_model_id,
                 torch_dtype=DTYPE,
                 use_safetensors=True,
-                variant="fp16" if DEVICE == "cuda" else None
+                variant="fp16" if DEVICE == "cuda" else None,
+                use_memory_efficient_attention=True
             )
             pipe = pipe.to(DEVICE, dtype=DTYPE)
-
-            # grab hidden size from SDXL
-            text_encoder_hidden_size = pipe.text_encoder.config.hidden_size
-            text_encoder_2_hidden_size = pipe.text_encoder_2.config.hidden_size
         else:
             pipe = StableDiffusionPipeline.from_pretrained(
                 self.base_model_id,
@@ -168,11 +165,7 @@ class EmojiFineTuner:
             optimizer=optimizer,
             num_warmup_steps=0,
             num_training_steps=len(train_dataloader) * num_epochs,
-        )
-
-        pipe.unet, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
-            pipe.unet, optimizer, train_dataloader, val_dataloader, lr_scheduler
-        )
+        )        
 
         # move encoders to right device after the accelerator is prepared
         if is_sdxl:
@@ -182,7 +175,27 @@ class EmojiFineTuner:
         else:
             pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
             pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
+
+        # prep these with the accelerator
+        pipe.unet, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
+            pipe.unet, optimizer, train_dataloader, val_dataloader, lr_scheduler
+        )
+
+        # move encoders again to make sure
+        if is_sdxl:
+            pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
+            pipe.text_encoder_2 = pipe.text_encoder_2.to(accelerator.device, dtype=DTYPE)
+            pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
+        else:
+            pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
+            pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
         
+        print(f"DEBUG: pipe.unet.device: {pipe.unet.device}")
+        print(f"DEBUG: pipe.text_encoder.device: {pipe.text_encoder.device}")
+        print(f"DEBUG: pipe.text_encoder_2.device: {pipe.text_encoder_2.device}")
+        print(f"DEBUG: pipe.vae.device: {pipe.vae.device}")
+        print(f"DEBUG: pipe.scheduler.device: {pipe.scheduler.device}")
+        print(f"DEBUG: pipe.tokenizer.device: {pipe.tokenizer.device}")
 
         self.logger.info("Starting training...")
         global_step = 0
