@@ -211,11 +211,53 @@ class EmojiFineTuner:
                     if is_sdxl:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0] ## [1, 77, 1280] -> [bs, seq_len, hidden_size]
                         encoder_output = pipe.text_encoder_2(batch["input_ids"])
-                        # Get the pooled output by taking mean across sequence dimension only
-                        pooled_output = encoder_output[0].mean(dim=1, keepdim=False) ## [bs, hidden_size] --> [1, 1280] (expected input dims)
-
                         
-
+                        # Add detailed debug information about encoder outputs
+                        print(f"DEBUG: encoder_output type: {type(encoder_output)}")
+                        print(f"DEBUG: encoder_output length: {len(encoder_output) if isinstance(encoder_output, tuple) else 'not tuple'}")
+                        print(f"DEBUG: encoder_output[0] shape: {encoder_output[0].shape}")
+                        
+                        if isinstance(encoder_output, tuple) and len(encoder_output) > 1:
+                            print(f"DEBUG: encoder_output[1] exists: {encoder_output[1] is not None}")
+                            if encoder_output[1] is not None:
+                                print(f"DEBUG: encoder_output[1] shape: {encoder_output[1].shape}")
+                        
+                        # Try to get pooled output from SDXL text_encoder_2
+                        if isinstance(encoder_output, tuple) and len(encoder_output) > 1 and encoder_output[1] is not None:
+                            # Some SDXL models have pooled output as second item
+                            pooled_output = encoder_output[1]
+                            print(f"DEBUG: Using pooled_output from encoder_output[1]: {pooled_output.shape}")
+                        else:
+                            # Get the pooled output by taking CLS token or using mean
+                            if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
+                                # Using CLS token (first token) is often better than mean
+                                pooled_output = encoder_output[0][:, 0, :]
+                                print(f"DEBUG: Using CLS token as pooled_output: {pooled_output.shape}")
+                            else:
+                                # Fallback to mean with keepdim to preserve dimensions
+                                pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
+                                print(f"DEBUG: Using mean with keepdim=True as pooled_output: {pooled_output.shape}")
+                        
+                        # Ensure we have the right shape [batch_size, hidden_dim]
+                        if len(pooled_output.shape) == 1:
+                            # Handle 1D tensor case
+                            if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
+                                hidden_dim = pipe.text_encoder_2.config.projection_dim
+                            else:
+                                hidden_dim = 1280  # Default SDXL hidden dimension
+                            
+                            pooled_output = pooled_output.reshape(1, hidden_dim)
+                            print(f"DEBUG: Reshaped 1D pooled_output to: {pooled_output.shape}")
+                        
+                        print(f"DEBUG: Final pooled_output shape: {pooled_output.shape}")
+                        
+                        # Get model's expected dimensions for debugging
+                        if hasattr(pipe.unet, "config"):
+                            if hasattr(pipe.unet.config, "addition_embed_dim"):
+                                print(f"DEBUG: UNet expects addition_embed_dim: {pipe.unet.config.addition_embed_dim}")
+                            if hasattr(pipe.unet.config, "addition_time_embed_dim"):
+                                print(f"DEBUG: UNet expects addition_time_embed_dim: {pipe.unet.config.addition_time_embed_dim}")
+                        
                         bs = batch["input_ids"].shape[0]
                         target_size = (512,512)
                         time_ids = torch.tensor(
@@ -227,13 +269,13 @@ class EmojiFineTuner:
                             dtype=DTYPE 
                         )
                         
-                        # Debug logging to understand shapes
-                        print(f"DEBUG: pooled_output shape: {pooled_output.shape}")
                         print(f"DEBUG: time_ids shape: {time_ids.shape}")
                         
-                        # DO NOT RESHAPE POOLED OUTPUT OR TIME IDS
-                        # THEY ARE ALREADY CORRECT SHAPE
-                        
+                        # Check tensor device and dtype
+                        print(f"DEBUG: pooled_output device: {pooled_output.device}, dtype: {pooled_output.dtype}")
+                        print(f"DEBUG: time_ids device: {time_ids.device}, dtype: {time_ids.dtype}")
+                        print(f"DEBUG: encoder_hidden_states device: {encoder_hidden_states.device}, dtype: {encoder_hidden_states.dtype}")
+                                                
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
                             "time_ids": time_ids
@@ -288,7 +330,53 @@ class EmojiFineTuner:
 
                     if is_sdxl:
                         encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                        pooled_output = pipe.text_encoder_2(batch["input_ids"])[0].mean(dim=1)
+                        encoder_output = pipe.text_encoder_2(batch["input_ids"])
+                        
+                        # Add detailed debug information about encoder outputs
+                        print(f"DEBUG-Val: encoder_output type: {type(encoder_output)}")
+                        print(f"DEBUG-Val: encoder_output length: {len(encoder_output) if isinstance(encoder_output, tuple) else 'not tuple'}")
+                        print(f"DEBUG-Val: encoder_output[0] shape: {encoder_output[0].shape}")
+                        
+                        if isinstance(encoder_output, tuple) and len(encoder_output) > 1:
+                            print(f"DEBUG-Val: encoder_output[1] exists: {encoder_output[1] is not None}")
+                            if encoder_output[1] is not None:
+                                print(f"DEBUG-Val: encoder_output[1] shape: {encoder_output[1].shape}")
+                        
+                        # Try to get pooled output from SDXL text_encoder_2
+                        if isinstance(encoder_output, tuple) and len(encoder_output) > 1 and encoder_output[1] is not None:
+                            # Some SDXL models have pooled output as second item
+                            pooled_output = encoder_output[1]
+                            print(f"DEBUG-Val: Using pooled_output from encoder_output[1]: {pooled_output.shape}")
+                        else:
+                            # Get the pooled output by taking CLS token or using mean
+                            if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
+                                # Using CLS token (first token) is often better than mean
+                                pooled_output = encoder_output[0][:, 0, :]
+                                print(f"DEBUG-Val: Using CLS token as pooled_output: {pooled_output.shape}")
+                            else:
+                                # Fallback to mean with keepdim to preserve dimensions
+                                pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
+                                print(f"DEBUG-Val: Using mean with keepdim=True as pooled_output: {pooled_output.shape}")
+                        
+                        # Ensure we have the right shape [batch_size, hidden_dim]
+                        if len(pooled_output.shape) == 1:
+                            # Handle 1D tensor case
+                            if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
+                                hidden_dim = pipe.text_encoder_2.config.projection_dim
+                            else:
+                                hidden_dim = 1280  # Default SDXL hidden dimension
+                            
+                            pooled_output = pooled_output.reshape(1, hidden_dim)
+                            print(f"DEBUG-Val: Reshaped 1D pooled_output to: {pooled_output.shape}")
+                        
+                        print(f"DEBUG-Val: Final pooled_output shape: {pooled_output.shape}")
+                        
+                        # Get model's expected dimensions for debugging
+                        if hasattr(pipe.unet, "config"):
+                            if hasattr(pipe.unet.config, "addition_embed_dim"):
+                                print(f"DEBUG-Val: UNet expects addition_embed_dim: {pipe.unet.config.addition_embed_dim}")
+                            if hasattr(pipe.unet.config, "addition_time_embed_dim"):
+                                print(f"DEBUG-Val: UNet expects addition_time_embed_dim: {pipe.unet.config.addition_time_embed_dim}")
 
                         # correcting tensor size/shape
                         bs = batch["input_ids"].shape[0]
@@ -301,21 +389,12 @@ class EmojiFineTuner:
                             device=accelerator.device,
                             dtype=DTYPE
                         )
-
                         
-                        # SDXL text_embeds should be of shape [batch_size, 1280]
-                        # Fix for dimension mismatches in UNet
-                        if hasattr(pipe.text_encoder_2.config, "projection_dim"):
-                            # Get the expected embedding size from the model config
-                            expected_dim = pipe.text_encoder_2.config.projection_dim
-                            # Ensure pooled_output has the right shape without flattening everything
-                            print(f"DEBUG-Val: pooled_output.shape={pooled_output.shape}, expected_dim={expected_dim}")
-                            if pooled_output.shape[-1] != expected_dim and pooled_output.ndim > 1:
-                                pooled_output = pooled_output.reshape(pooled_output.shape[0], expected_dim)
-                                print(f"DEBUG-Val: reshaped to {pooled_output.shape}")
-
-                        # Check time_ids for debugging
-                        print(f"DEBUG-Val: time_ids.shape={time_ids.shape}")
+                        # Check tensor device and dtype
+                        print(f"DEBUG-Val: time_ids shape: {time_ids.shape}")
+                        print(f"DEBUG-Val: pooled_output device: {pooled_output.device}, dtype: {pooled_output.dtype}")
+                        print(f"DEBUG-Val: time_ids device: {time_ids.device}, dtype: {time_ids.dtype}")
+                        print(f"DEBUG-Val: encoder_hidden_states device: {encoder_hidden_states.device}, dtype: {encoder_hidden_states.dtype}")
                         
                         added_cond_kwargs = {
                             "text_embeds": pooled_output,
