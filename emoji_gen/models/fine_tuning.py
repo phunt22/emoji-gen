@@ -228,15 +228,27 @@ class EmojiFineTuner:
                             pooled_output = encoder_output[1]
                             print(f"DEBUG: Using pooled_output from encoder_output[1]: {pooled_output.shape}")
                         else:
-                            # Get the pooled output by taking CLS token or using mean
-                            if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
-                                # Using CLS token (first token) is often better than mean
-                                pooled_output = encoder_output[0][:, 0, :]
-                                print(f"DEBUG: Using CLS token as pooled_output: {pooled_output.shape}")
+                            # Check if we have a 2D tensor with shape [batch_size, hidden_dim]
+                            if encoder_output[0].ndim == 2:
+                                # This is already the right shape (batch_size, hidden_dim)
+                                pooled_output = encoder_output[0]
+                                print(f"DEBUG: Found 2D tensor with correct shape: {pooled_output.shape}")
+                            elif encoder_output[0].ndim == 3:
+                                # Get the pooled output by taking CLS token or using mean
+                                if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
+                                    # Using CLS token (first token) is often better than mean
+                                    pooled_output = encoder_output[0][:, 0, :]
+                                    print(f"DEBUG: Using CLS token as pooled_output: {pooled_output.shape}")
+                                else:
+                                    # Fallback to mean with keepdim to preserve dimensions
+                                    pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
+                                    print(f"DEBUG: Using mean with keepdim=True as pooled_output: {pooled_output.shape}")
                             else:
-                                # Fallback to mean with keepdim to preserve dimensions
-                                pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
-                                print(f"DEBUG: Using mean with keepdim=True as pooled_output: {pooled_output.shape}")
+                                # Unexpected shape, try to adapt
+                                print(f"DEBUG: Unexpected tensor dimension: {encoder_output[0].ndim}")
+                                # Reshape to expected format
+                                pooled_output = encoder_output[0].reshape(1, -1)
+                                print(f"DEBUG: Reshaped to: {pooled_output.shape}")
                         
                         # Ensure we have the right shape [batch_size, hidden_dim]
                         if len(pooled_output.shape) == 1:
@@ -348,15 +360,27 @@ class EmojiFineTuner:
                             pooled_output = encoder_output[1]
                             print(f"DEBUG-Val: Using pooled_output from encoder_output[1]: {pooled_output.shape}")
                         else:
-                            # Get the pooled output by taking CLS token or using mean
-                            if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
-                                # Using CLS token (first token) is often better than mean
-                                pooled_output = encoder_output[0][:, 0, :]
-                                print(f"DEBUG-Val: Using CLS token as pooled_output: {pooled_output.shape}")
+                            # Check if we have a 2D tensor with shape [batch_size, hidden_dim]
+                            if encoder_output[0].ndim == 2:
+                                # This is already the right shape (batch_size, hidden_dim)
+                                pooled_output = encoder_output[0]
+                                print(f"DEBUG-Val: Found 2D tensor with correct shape: {pooled_output.shape}")
+                            elif encoder_output[0].ndim == 3:
+                                # Get the pooled output by taking CLS token or using mean
+                                if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
+                                    # Using CLS token (first token) is often better than mean
+                                    pooled_output = encoder_output[0][:, 0, :]
+                                    print(f"DEBUG-Val: Using CLS token as pooled_output: {pooled_output.shape}")
+                                else:
+                                    # Fallback to mean with keepdim to preserve dimensions
+                                    pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
+                                    print(f"DEBUG-Val: Using mean with keepdim=True as pooled_output: {pooled_output.shape}")
                             else:
-                                # Fallback to mean with keepdim to preserve dimensions
-                                pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
-                                print(f"DEBUG-Val: Using mean with keepdim=True as pooled_output: {pooled_output.shape}")
+                                # Unexpected shape, try to adapt
+                                print(f"DEBUG-Val: Unexpected tensor dimension: {encoder_output[0].ndim}")
+                                # Reshape to expected format
+                                pooled_output = encoder_output[0].reshape(1, -1)
+                                print(f"DEBUG-Val: Reshaped to: {pooled_output.shape}")
                         
                         # Ensure we have the right shape [batch_size, hidden_dim]
                         if len(pooled_output.shape) == 1:
