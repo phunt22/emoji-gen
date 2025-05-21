@@ -176,6 +176,13 @@ class EmojiFineTuner:
                 use_safetensors=True,
             )
         
+        # memory optimization
+        pipe.unet.enable_gradient_checkpointing()   # checkpoints every block
+        pipe.enable_attention_slicing()             # 2-way slice for all attention
+        pipe.enable_xformers_memory_efficient_attention()  # reduces attention memory usage
+        pipe.enable_vae_slicing()  # slice VAE operations to save memory
+        pipe.vae.to(memory_format=torch.channels_last)  # fp16 channels_last = smaller
+        
         # Move pipeline to accelerator device
         pipe = pipe.to(accelerator.device, dtype=DTYPE)
         
@@ -273,8 +280,8 @@ class EmojiFineTuner:
                     latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
                     latents = latents * 0.18215
 
-                    # Use float32 for noise to match other tensors
-                    noise = torch.randn_like(latents, dtype=torch.float32)
+                    # Use float16 for noise to match other tensors
+                    noise = torch.randn_like(latents, dtype=torch.float16)
                     timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
                     noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
 
@@ -297,7 +304,7 @@ class EmojiFineTuner:
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
                                 device=accelerator.device,
-                                dtype=encoder_hidden_states.dtype
+                                dtype=torch.float16  # Keep in fp16
                             )
                             
                             # Apply the projection
@@ -354,15 +361,15 @@ class EmojiFineTuner:
                             pooled_output = pooled_output.reshape(1, hidden_dim)
                             print(f"DEBUG: Reshaped 1D pooled_output to: {pooled_output.shape}")
                         
-                        # Ensure pooled_output is float32 to match time_ids
-                        if pooled_output.dtype != torch.float32:
-                            pooled_output = pooled_output.to(torch.float32)
-                            print(f"DEBUG: Converted pooled_output to float32")
+                        # Keep everything in fp16
+                        if pooled_output.dtype != torch.float16:
+                            pooled_output = pooled_output.to(torch.float16)
+                            print(f"DEBUG: Converted pooled_output to float16")
                         
-                        # Ensure encoder_hidden_states is float32 as well
-                        if encoder_hidden_states.dtype != torch.float32:
-                            encoder_hidden_states = encoder_hidden_states.to(torch.float32)
-                            print(f"DEBUG: Converted encoder_hidden_states to float32")
+                        # Keep encoder_hidden_states in fp16
+                        if encoder_hidden_states.dtype != torch.float16:
+                            encoder_hidden_states = encoder_hidden_states.to(torch.float16)
+                            print(f"DEBUG: Converted encoder_hidden_states to float16")
                         
                         print(f"DEBUG: Final pooled_output shape: {pooled_output.shape}")
                         
@@ -381,7 +388,7 @@ class EmojiFineTuner:
                                 for _ in range(bs)
                             ],
                             device=accelerator.device,
-                            dtype=torch.float32  # Use float32 instead of DTYPE (which is float16)
+                            dtype=torch.float16  # Keep in fp16
                         )
                         
                         print(f"DEBUG: time_ids shape: {time_ids.shape}")
@@ -439,8 +446,8 @@ class EmojiFineTuner:
                     latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
                     latents = latents * 0.18215
                     
-                    # Use float32 for noise to match other tensors
-                    noise = torch.randn_like(latents, dtype=torch.float32)
+                    # Use float16 for noise to match other tensors
+                    noise = torch.randn_like(latents, dtype=torch.float16)
                     timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
                     noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
 
@@ -462,7 +469,7 @@ class EmojiFineTuner:
                                 encoder_hidden_states.shape[-1], 
                                 expected_dim,
                                 device=accelerator.device,
-                                dtype=encoder_hidden_states.dtype
+                                dtype=torch.float16  # Keep in fp16
                             )
                             
                             # Apply the projection
@@ -515,24 +522,24 @@ class EmojiFineTuner:
                             pooled_output = pooled_output.reshape(1, hidden_dim)
                             print(f"DEBUG-Val: Reshaped 1D pooled_output to: {pooled_output.shape}")
                         
-                        # Ensure pooled_output is float32 to match time_ids
-                        if pooled_output.dtype != torch.float32:
-                            pooled_output = pooled_output.to(torch.float32)
-                            print(f"DEBUG-Val: Converted pooled_output to float32")
-                        
-                        # Ensure encoder_hidden_states is float32 as well
-                        if encoder_hidden_states.dtype != torch.float32:
-                            encoder_hidden_states = encoder_hidden_states.to(torch.float32)
-                            print(f"DEBUG-Val: Converted encoder_hidden_states to float32")
-                        
-                        print(f"DEBUG-Val: Final pooled_output shape: {pooled_output.shape}")
-                        
-                        # Get model's expected dimensions for debugging
-                        if hasattr(pipe.unet, "config"):
-                            if hasattr(pipe.unet.config, "addition_embed_dim"):
-                                print(f"DEBUG-Val: UNet expects addition_embed_dim: {pipe.unet.config.addition_embed_dim}")
-                            if hasattr(pipe.unet.config, "addition_time_embed_dim"):
-                                print(f"DEBUG-Val: UNet expects addition_time_embed_dim: {pipe.unet.config.addition_time_embed_dim}")
+                            # Keep everything in fp16
+                            if pooled_output.dtype != torch.float16:
+                                pooled_output = pooled_output.to(torch.float16)
+                                print(f"DEBUG-Val: Converted pooled_output to float16")
+                            
+                            # Keep encoder_hidden_states in fp16
+                            if encoder_hidden_states.dtype != torch.float16:
+                                encoder_hidden_states = encoder_hidden_states.to(torch.float16)
+                                print(f"DEBUG-Val: Converted encoder_hidden_states to float16")
+                            
+                            print(f"DEBUG-Val: Final pooled_output shape: {pooled_output.shape}")
+                            
+                            # Get model's expected dimensions for debugging
+                            if hasattr(pipe.unet, "config"):
+                                if hasattr(pipe.unet.config, "addition_embed_dim"):
+                                    print(f"DEBUG-Val: UNet expects addition_embed_dim: {pipe.unet.config.addition_embed_dim}")
+                                if hasattr(pipe.unet.config, "addition_time_embed_dim"):
+                                    print(f"DEBUG-Val: UNet expects addition_time_embed_dim: {pipe.unet.config.addition_time_embed_dim}")
 
                         bs = batch["input_ids"].shape[0]
                         target_size = (512, 512)
@@ -542,7 +549,7 @@ class EmojiFineTuner:
                                 for _ in range(bs)
                             ],
                             device=accelerator.device,
-                            dtype=torch.float32  # Use float32 instead of DTYPE (which is float16)
+                            dtype=torch.float16  # Keep in fp16
                         )
                         
                         # Check tensor device and dtype
