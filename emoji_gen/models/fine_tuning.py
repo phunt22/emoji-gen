@@ -17,6 +17,7 @@ import numpy as np
 from accelerate import Accelerator
 from tqdm.auto import tqdm
 import math
+import os
 
 class EmojiDataset(Dataset):
     def __init__(self, data_path: str, tokenizer, image_size: int = 512, is_sdxl: bool = False):
@@ -98,13 +99,35 @@ class EmojiFineTuner:
         # Set random seed
         torch.manual_seed(seed)
         
+        # Debug PyTorch and CUDA setup
+        print("\nDEBUG: PyTorch and CUDA Setup:")
+        print(f"PyTorch version: {torch.__version__}")
+        print(f"PyTorch path: {torch.__file__}")
+        print(f"CUDA available: {torch.cuda.is_available()}")
+        print(f"CUDA version: {torch.version.cuda if torch.cuda.is_available() else 'N/A'}")
+        print(f"CUDA device count: {torch.cuda.device_count() if torch.cuda.is_available() else 0}")
+        if torch.cuda.is_available():
+            print(f"CUDA device name: {torch.cuda.get_device_name(0)}")
+            print(f"CUDA current device: {torch.cuda.current_device()}")
+            print(f"CUDA device capability: {torch.cuda.get_device_capability(0)}")
+        print(f"CUDA is built: {torch.cuda.is_built()}")
+        print(f"CUDA is initialized: {torch.cuda.is_initialized()}")
+        print(f"Environment variables:")
+        print(f"  CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not set')}")
+        print(f"  NVIDIA_VISIBLE_DEVICES: {os.environ.get('NVIDIA_VISIBLE_DEVICES', 'Not set')}")
+        print("\n")
+        
         # Initialize accelerator
+        print("DEBUG: Initializing accelerator...")
         accelerator = Accelerator(
-            # gradient_accumulation_steps=gradient_accumulation_steps,
-            # mixed_precision=mixed_precision,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            mixed_precision=mixed_precision,
+            device_placement=True,  # Explicitly enable device placement
         )
         
         print(f"DEBUG: TORCH_CUDA_AVAILABLE: {torch.cuda.is_available()}")
+        print(f"DEBUG: CUDA_DEVICE_COUNT: {torch.cuda.device_count()}")
+        print(f"DEBUG: CUDA_DEVICE_NAME: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A'}")
         print(f"DEBUG: DEVICE from config: {DEVICE}")
         print(f"DEBUG: accelerator.device: {accelerator.device}")
         print(f"DEBUG: accelerator.state.device: {accelerator.state.device}")
