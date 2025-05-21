@@ -100,10 +100,31 @@ class EmojiFineTuner:
         
         # Initialize accelerator
         accelerator = Accelerator(
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            mixed_precision=mixed_precision,
+            # gradient_accumulation_steps=gradient_accumulation_steps,
+            # mixed_precision=mixed_precision,
         )
-
+        
+        print(f"DEBUG: TORCH_CUDA_AVAILABLE: {torch.cuda.is_available()}")
+        print(f"DEBUG: DEVICE from config: {DEVICE}")
+        print(f"DEBUG: accelerator.device: {accelerator.device}")
+        print(f"DEBUG: accelerator.state.device: {accelerator.state.device}")
+        
+        # Force GPU usage if available but not detected by accelerator
+        if torch.cuda.is_available() and str(accelerator.device) == "cpu":
+            print("WARNING: CUDA is available but accelerator is using CPU. Forcing GPU usage...")
+            # Create a new accelerator with device_placement=False so we can manually handle device placement
+            accelerator = Accelerator(
+                gradient_accumulation_steps=gradient_accumulation_steps,
+                mixed_precision=mixed_precision,
+                device_placement=False,  # Disable automatic device placement
+            )
+            print(f"DEBUG: New accelerator created with device_placement=False")
+            
+            # Override accelerator device in its state
+            if hasattr(accelerator, "state"):
+                accelerator.state.device = torch.device("cuda:0")
+                print(f"DEBUG: Forced accelerator.state.device to {accelerator.state.device}")
+        
         is_sdxl = "xl" in self.base_model_id.lower()
 
         if is_sdxl:
@@ -112,7 +133,6 @@ class EmojiFineTuner:
                 torch_dtype=DTYPE,
                 use_safetensors=True,
                 variant="fp16" if DEVICE == "cuda" else None,
-                use_memory_efficient_attention=True
             )
             pipe = pipe.to(DEVICE, dtype=DTYPE)
         else:
@@ -193,9 +213,6 @@ class EmojiFineTuner:
         print(f"DEBUG: pipe.unet.device: {pipe.unet.device}")
         print(f"DEBUG: pipe.text_encoder.device: {pipe.text_encoder.device}")
         print(f"DEBUG: pipe.text_encoder_2.device: {pipe.text_encoder_2.device}")
-        print(f"DEBUG: pipe.vae.device: {pipe.vae.device}")
-        print(f"DEBUG: pipe.scheduler.device: {pipe.scheduler.device}")
-        print(f"DEBUG: pipe.tokenizer.device: {pipe.tokenizer.device}")
 
         self.logger.info("Starting training...")
         global_step = 0
