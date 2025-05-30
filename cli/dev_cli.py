@@ -27,6 +27,7 @@ from emoji_gen.config import (
     TEST_DATA_PATH_IMAGES,
     TEST_METADATA_PATH,
     get_model_path,
+    FINE_TUNED_MODELS_DIR
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -104,6 +105,11 @@ def handle_finetune(args):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             base_name_for_dir = model_id_to_finetune.split('/')[-1].replace('-', '_').replace('.','_')
             output_model_name = f"{base_name_for_dir}_dreambooth_{timestamp}"
+
+        expected_output_path = FINE_TUNED_MODELS_DIR / output_model_name
+        expected_output_path.mkdir(parents=True, exist_ok=True)
+
+
         logger.info(f"Starting fine-tuning process...")
         logger.info(f"Base Model ID: {model_id_to_finetune}")
         logger.info(f"Detected Model Type for Training Script: {fine_tuner.model_type}")
@@ -134,6 +140,7 @@ def handle_finetune(args):
             'lr_warmup_steps': getattr(args, 'lr_warmup_steps', 0),
             'checkpointing_steps': getattr(args, 'checkpointing_steps', None),
             'checkpoints_total_limit': getattr(args, 'checkpoints_total_limit', 2),
+            'output_dir': str(expected_output_path) ## otherwise weights are outputted in scripts folder
         }
 
         # Set resolution based on model type, defaulting if not provided via CLI
@@ -294,7 +301,7 @@ def main():
     training_group.add_argument('--batch-size', type=int, default=1, help='Training batch size (per device) (default: %(default)s)')
     training_group.add_argument('--learning-rate', type=float, default=1e-4, help='Learning rate (default: %(default)s)')
     training_group.add_argument('--gradient-accumulation-steps', type=int, default=4, help='Gradient accumulation steps (default: %(default)s)')
-    training_group.add_argument('--lora-rank', type=int, help='LoRA rank (e.g., 32). If not provided, LoRA might not be used or script might use its own default.')
+    training_group.add_argument('--lora-rank', type=int, default=32, help='LoRA rank (e.g., 32). If not provided, LoRA might not be used or script might use its own default.')
     training_group.add_argument('--seed', type=int, default=42, help='Random seed (default: %(default)s)')
     training_group.add_argument('--resolution', type=int, help='Resolution for training images (e.g., 512 or 1024). Default depends on model type.')
     training_group.add_argument('--mixed-precision', default='fp16', choices=['no', 'fp16', 'bf16'], help='Mixed precision training (default: %(default)s)')
