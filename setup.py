@@ -8,7 +8,7 @@ setup(
     # auto install dependencies
     install_requires=[
         "torch",
-        "diffusers",
+        "diffusers @ git+https://github.com/huggingface/diffusers.git",
         "transformers",
         "accelerate",
         "safetensors",
@@ -18,19 +18,16 @@ setup(
         
         # fine tuning dependencies
         "peft",  # For LoRA
-        "ray[tune]",  # hyperparam tuning
-        "hyperopt",
-        
-        # web/server dependencies
+        "xformers",
+        # web/server dependencies (ensure flask is listed once)
         "flask",
         "flask-cors",
         "python-dotenv",
-        "flask",    
         "requests",
-        "bs4",
-        ## FLUX installation dependency
+        "beautifulsoup4",
         "protobuf", 
         "sentencepiece",
+        
     ],
     # registers the dev_cli main function as "emoji-dev" in the CLI
     # client CLI is emoji-gen

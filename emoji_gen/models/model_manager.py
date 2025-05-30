@@ -1,6 +1,11 @@
 from pathlib import Path
 import torch
-from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline, FluxPipeline
+from diffusers import (
+    StableDiffusionPipeline, 
+    StableDiffusionXLPipeline, 
+    StableDiffusion3Pipeline,
+    FluxPipeline
+)
 from typing import Optional, Dict, Tuple, Union
 from emoji_gen.config import MODEL_ID_MAP, FINE_TUNED_MODELS_DIR, DEFAULT_MODEL
 import gc
@@ -60,18 +65,18 @@ class ModelManager:
                             variant="fp16" if self._device == "cuda" else None
                         ).to(self._device)
                     else:
-                        # Regular SD models
+                        # SD 3 model
                         print("Loading standard SD model...")
-                        self.active_model = StableDiffusionPipeline.from_pretrained(
+                        self.active_model = StableDiffusion3Pipeline.from_pretrained(
                             model_path,
                             torch_dtype=self._dtype
                         ).to(self._device)
-                elif "flux" in model_path_lower:
-                    # if FLUX model
-                    self.active_model = FluxPipeline.from_pretrained(
-                        model_path, 
-                        torch_dtype=torch.bfloat16
-                    ).to(self._device)
+                # elif "flux" in model_path_lower:
+                #     # if FLUX model
+                #     self.active_model = FluxPipeline.from_pretrained(
+                #         model_path, 
+                #         torch_dtype=torch.bfloat16
+                #     ).to(self._device)
                 else:
                     return False, f"Unsupported model type: {model_path}"
 

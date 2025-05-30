@@ -1,725 +1,413 @@
-import torch
-from pathlib import Path
-import logging
-from typing import Optional, Dict, List, Union, Literal, Tuple
-from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
-from peft import LoraConfig, get_peft_model, TaskType
-from transformers import TrainingArguments
-from diffusers.optimization import get_scheduler
-from emoji_gen.models.cache import model_cache
-from emoji_gen.config import DEVICE, DTYPE
-import json
-from torch.utils.data import Dataset, DataLoader
-from PIL import Image
-import requests
-from io import BytesIO
-import numpy as np
-from accelerate import Accelerator
-from tqdm.auto import tqdm
-import math
 import os
-
-class EmojiDataset(Dataset):
-    def __init__(self, data_path: str, tokenizer, image_size: int = 512, is_sdxl: bool = False):
-        with open(data_path, 'r') as f:
-            self.data = json.load(f)
-        self.tokenizer = tokenizer
-        self.image_size = image_size
-        self.is_sdxl = is_sdxl ## not actually needed now
-        
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, idx):
-        item = self.data[idx]
-        
-        # Get image
-        response = requests.get(item['link'])
-        image = Image.open(BytesIO(response.content))
-        
-        
-        # Convert RGBA to RGB if needed
-        if image.mode == 'P':
-            # if palette, paste the RGBA mask over the white backround on RGB
-            image = image.convert('RGBA')
-            background = Image.new('RGB', image.size, (255, 255, 255))
-            background.paste(image, mask=image.split()[3])  # 3 is the alpha channel
-            image = background
-        if image.mode == 'RGBA':
-            # similar approach
-            background = Image.new('RGB', image.size, (255, 255, 255))
-            background.paste(image, mask=image.split()[3]) 
-            image = background
-        elif image.mode != 'RGB':
-            image = image.convert('RGB')
-        
-        # Resize and convert to tensor
-        image = image.resize((self.image_size, self.image_size))
-        image = np.array(image)
-        image = torch.from_numpy(image).permute(2, 0, 1).float() / 127.5 - 1.0
-        
-        # Get text
-        text = item['processed']
-        text_inputs = self.tokenizer(
-            text,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        
-        return {
-            "pixel_values": image,
-            "input_ids": text_inputs.input_ids[0],
-            "attention_mask": text_inputs.attention_mask[0],
-        }
+import json
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Dict, Any, Optional, List
+import logging
+from datetime import datetime
 
 class EmojiFineTuner:
-    def __init__(self, base_model_id: str, output_dir: str = "fine_tuned_models"):
+    """Enhanced fine-tuner for emoji generation models using DreamBooth LoRA"""
+    
+    def __init__(self, base_model_id: str):
         self.base_model_id = base_model_id
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger = logging.getLogger(__name__)
         
-    def train_lora(
-        self,
-        train_data_path: str,
-        val_data_path: str,
-        model_name: str,
-        lora_rank: int = 4,
-        lora_alpha: int = 32,
-        lora_dropout: float = 0.1,
-        learning_rate: float = 1e-4,
-        num_epochs: int = 100,
-        batch_size: int = 1,
-        gradient_accumulation_steps: int = 4,
-        mixed_precision: str = "fp16",
-        seed: int = 42,
-    ) -> tuple[str, float]:
-        # Set random seed
-        torch.manual_seed(seed)
-        
-        # Debug PyTorch and CUDA setup
-        print("\nDEBUG: PyTorch and CUDA Setup:")
-        print(f"PyTorch version: {torch.__version__}")
-        print(f"PyTorch path: {torch.__file__}")
-        
-        # Initialize CUDA if available
-        if torch.cuda.is_available():
-            # Make sure we're using the right device
-            torch.cuda.set_device(0)
-            # Clear any existing CUDA memory
-            torch.cuda.empty_cache()
-            # Force CUDA initialization
-            torch.cuda.init()
-            print("DEBUG: CUDA initialized and memory cleared")
-            
-            # Verify CUDA is working
-            test_tensor = torch.zeros(1, device='cuda')
-            print(f"DEBUG: CUDA test tensor created: {test_tensor.device}")
-        
-        print(f"CUDA available: {torch.cuda.is_available()}")
-        print(f"CUDA version: {torch.version.cuda if torch.cuda.is_available() else 'N/A'}")
-        print(f"CUDA device count: {torch.cuda.device_count() if torch.cuda.is_available() else 0}")
-        if torch.cuda.is_available():
-            print(f"CUDA device name: {torch.cuda.get_device_name(0)}")
-            print(f"CUDA current device: {torch.cuda.current_device()}")
-            print(f"CUDA device capability: {torch.cuda.get_device_capability(0)}")
-            print(f"CUDA memory allocated: {torch.cuda.memory_allocated(0) / 1024**2:.2f} MB")
-            print(f"CUDA memory cached: {torch.cuda.memory_reserved(0) / 1024**2:.2f} MB")
-        print("\n")
-        
-        # Initialize accelerator
-        print("DEBUG: Initializing accelerator...")
-        accelerator = Accelerator(
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            mixed_precision=mixed_precision,
-        )
+        # Determine model type from model ID
+        self.model_type = self._detect_model_type(base_model_id)
 
-        
-        print(f"DEBUG: TORCH_CUDA_AVAILABLE: {torch.cuda.is_available()}")
-        print(f"DEBUG: CUDA_DEVICE_COUNT: {torch.cuda.device_count()}")
-        print(f"DEBUG: CUDA_DEVICE_NAME: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A'}")
-        print(f"DEBUG: DEVICE from config: {DEVICE}")
-        print(f"DEBUG: accelerator.device: {accelerator.device}")
-        print(f"DEBUG: accelerator.state.device: {accelerator.state.device}")
-        
-        # Force GPU usage if available but not detected by accelerator
-        if torch.cuda.is_available() and str(accelerator.device) == "cpu":
-            print("WARNING: CUDA is available but accelerator is using CPU. Forcing GPU usage...")
-            # Create a new accelerator with device_placement=False so we can manually handle device placement
-            accelerator = Accelerator(
-                gradient_accumulation_steps=gradient_accumulation_steps,
-                mixed_precision=mixed_precision,
-                device_placement=False,  # Disable automatic device placement
-            )
-            print(f"DEBUG: New accelerator created with device_placement=False")
-            
-            # Override accelerator device in its state
-            if hasattr(accelerator, "state"):
-                accelerator.state.device = torch.device("cuda:0")
-                print(f"DEBUG: Forced accelerator.state.device to {accelerator.state.device}")
-        
-        is_sdxl = "xl" in self.base_model_id.lower()
+        # Set up paths
+        # This assumes fine_tuning.py is in emoji_gen/models/
+        # So, __file__.parent is emoji_gen/models/
+        # __file__.parent.parent is emoji_gen/
+        # __file__.parent.parent.parent is the project root where scripts/ should be
+        self.scripts_dir = Path(__file__).parent.parent.parent / "scripts" 
+        self.output_base_dir = Path("fine_tuned_models") # This will be relative to where the script is run
+        self.output_base_dir.mkdir(exist_ok=True)
 
-        if is_sdxl:
-            pipe = StableDiffusionXLPipeline.from_pretrained(
-                self.base_model_id,
-                torch_dtype=DTYPE,
-                use_safetensors=True,
-                variant="fp16" if torch.cuda.is_available() else None,
-            )
+    def _detect_model_type(self, model_id: str) -> str:
+        """Detect whether model is SDXL or SD3 based on model ID"""
+        model_id_lower = model_id.lower()
+        
+        if "sdxl" in model_id_lower or "stable-diffusion-xl" in model_id_lower:
+            return "sdxl"
+        elif "sd3" in model_id_lower or "stable-diffusion-3" in model_id_lower:
+            return "sd3"
         else:
-            pipe = StableDiffusionPipeline.from_pretrained(
-                self.base_model_id,
-                torch_dtype=DTYPE,
-                use_safetensors=True,
-            )
+            self.logger.warning(f"Unknown model type for {model_id}, defaulting to SDXL. Training script might not be optimal.")
+            return "sdxl" # Defaulting, but training script choice might be an issue
+    
+    def _legacy_prepare_emoji_data_from_json(self, train_data_json_path: str, temp_dir: Path) -> Path:
+        """(Legacy) Convert emoji JSON data to image directory structure for DreamBooth."""
+        self.logger.info(f"Using legacy JSON data preparation from {train_data_json_path}")
+        instance_dir = temp_dir / "instance_images_from_json"
+        instance_dir.mkdir(exist_ok=True)
         
-        # memory optimization
-        pipe.unet.enable_gradient_checkpointing()   # checkpoints every block
-        pipe.enable_attention_slicing()             # 2-way slice for all attention
-        pipe.enable_vae_slicing()  # slice VAE operations to save memory
-        pipe.vae.to(memory_format=torch.channels_last)  # fp16 channels_last = smaller
+        with open(train_data_json_path, 'r') as f:
+            emoji_data = json.load(f)
         
-        # Move pipeline to accelerator device
-        pipe = pipe.to(accelerator.device, dtype=DTYPE)
+        copied_count = 0
+        for i, emoji_item in enumerate(emoji_data):
+            img_path_str = emoji_item.get('image_path')
+            if img_path_str:
+                src_path = Path(img_path_str)
+                # Attempt to resolve if path is relative to project root or is absolute
+                if not src_path.is_absolute() and not src_path.exists():
+                    # Assuming image_path in JSON might be relative to project root
+                    # project_root = Path(__file__).parent.parent.parent 
+                    # potential_path = project_root / src_path
+                    # self.logger.warning(f"Relative path {src_path} not found, trying from project root: {potential_path}")
+                    # if potential_path.exists():
+                    #    src_path = potential_path
+                    # else:
+                    # As per previous logic, it seemed image_paths in JSON were expected to be directly usable or absolute
+                    # For now, let's keep it simple and assume it should exist as specified or it's an error.
+                    pass # Path will be checked by src_path.exists() next
+
+                if src_path.exists():
+                    dst_path = instance_dir / f"emoji_{i:03d}{src_path.suffix}"
+                    try:
+                        shutil.copy2(src_path, dst_path)
+                        copied_count += 1
+                    except Exception as e:
+                        self.logger.error(f"Failed to copy {src_path} to {dst_path}: {e}")
+                else:
+                    self.logger.warning(f"Image path not found in JSON, skipping: {src_path} (Original path in JSON: {img_path_str})")
+            else:
+                self.logger.warning(f"Missing 'image_path' for item {i} in JSON, skipping.")
+
+        self.logger.info(f"Prepared {copied_count} training images from JSON into {instance_dir}")
+        if copied_count == 0 and emoji_data: # If JSON was not empty but no images copied
+             self.logger.error(f"JSON at {train_data_json_path} was processed, but no images were copied. Check 'image_path' entries.")
+        return instance_dir
+    
+    def _get_training_script_path(self) -> Path:
+        """Get the appropriate training script based on model type"""
+        if self.model_type == "sdxl":
+            script_name = "train_dreambooth_lora_sdxl.py"
+        # elif self.model_type == "sd3": # Assuming there will be an sd3 script
+            # script_name = "train_dreambooth_lora_sd3.py" 
+        else:  # sd3 or fallback for unknown if sd3 script isn't specifically handled
+            # For now, let's assume sd3 might use a specific script or fall back to sdxl if compatible
+            # This part needs to be accurate based on available scripts in `diffusers/examples/dreambooth`
+            self.logger.info(f"Model type is {self.model_type}. Using train_dreambooth_lora_sd3.py. Adjust if a specific script for {self.model_type} exists.")
+            script_name = "train_dreambooth_lora_sd3.py" # Defaulting to sdxl script, adjust if sd3 has its own
         
-        if is_sdxl:
-            target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
+        script_path = self.scripts_dir / script_name
+        if not script_path.exists():
+            raise FileNotFoundError(f"Training script not found: {script_path}. Expected in {self.scripts_dir}")
+        
+        return script_path
+
+    def _build_training_command(self, 
+                              instance_data_dir: Path,
+                              output_dir: Path,
+                              validation_data_dir: Optional[Path] = None, # Added for directory-based validation data
+                              **kwargs) -> List[str]:
+        """Build the training command based on model type and parameters"""
+
+        script_path = self._get_training_script_path()
+
+        cmd = [
+            "accelerate", "launch", str(script_path),
+            "--pretrained_model_name_or_path", self.base_model_id,
+            "--instance_data_dir", str(instance_data_dir),
+            "--output_dir", str(output_dir),
+            "--mixed_precision", kwargs.get("mixed_precision", "fp16"),
+            "--train_batch_size", str(kwargs.get('batch_size', 1)),
+            "--gradient_accumulation_steps", str(kwargs.get('gradient_accumulation_steps', 4)),
+            "--learning_rate", str(kwargs.get('learning_rate', 1e-4)),
+            "--lr_scheduler", kwargs.get("lr_scheduler", "constant"),
+            "--lr_warmup_steps", str(kwargs.get("lr_warmup_steps", "0")),
+            "--max_train_steps", str(kwargs.get('max_train_steps', 500)),
+            "--seed", str(kwargs.get('seed', 42)),
+        ]
+
+        # Conditionally add resolution
+        resolution = kwargs.get('resolution')
+        if resolution is not None:
+            cmd.extend(["--resolution", str(resolution)])
+
+        instance_prompt = kwargs.get('instance_prompt', 'sks emoji')
+        cmd.extend(["--instance_prompt", instance_prompt])
+        
+        class_prompt = kwargs.get('class_prompt') # Default is None if not provided
+        if class_prompt:
+            cmd.extend(["--class_prompt", class_prompt])
+            # If using class_prompt, diffusers scripts usually require prior preservation.
+            cmd.extend(["--with_prior_preservation", "--prior_loss_weight=1.0"]) 
+            class_data_dir = kwargs.get('class_data_dir')
+            if class_data_dir:
+                 cmd.extend(["--class_data_dir", str(class_data_dir)])
+            else:
+                self.logger.warning("class_prompt is provided, but class_data_dir is not. Prior preservation might not work as expected without class images.")
+
+        validation_prompt = kwargs.get('validation_prompt')
+        if validation_prompt: # Only add validation flags if a prompt is given
+            cmd.extend(["--validation_prompt", validation_prompt])
+            # Check if validation_data_dir (for image folder) is provided
+            if validation_data_dir and validation_data_dir.exists() and any(validation_data_dir.iterdir()):
+                cmd.extend(["--validation_data_dir", str(validation_data_dir)])
+                self.logger.info(f"Using validation image directory: {validation_data_dir}")
+            
+            # validation_epochs is a common arg, but some scripts might use validation_steps
+            validation_epochs = kwargs.get('validation_epochs')
+            if validation_epochs is not None:
+                 cmd.extend(["--validation_epochs", str(validation_epochs)])
+            else:
+                # Alternative: use validation_steps if your script prefers that
+                validation_steps = kwargs.get('validation_steps')
+                if validation_steps is not None:
+                    cmd.extend(["--num_validation_images", str(kwargs.get('num_validation_images', 4))]) # Often paired with validation_steps
+                    cmd.extend(["--validation_steps", str(validation_steps)])
+
+        if self.model_type == "sdxl":
+            vae_path = kwargs.get('vae_path', 'madebyollin/sdxl-vae-fp16-fix')
+            if vae_path: # Only add if a VAE path is actually provided/needed
+                cmd.extend(["--pretrained_vae_model_name_or_path", vae_path])
+            
+            # TODO add back
+            if kwargs.get("enable_xformers_memory_efficient_attention", True): # Default to True for SDXL
+                 cmd.append("--enable_xformers_memory_efficient_attention")
+            if kwargs.get("gradient_checkpointing", True): # Default to True for SDXL
+                 cmd.append("--gradient_checkpointing")
+            if kwargs.get("use_8bit_adam", True): # Default to True for SDXL
+                 cmd.append("--use_8bit_adam")
+        
+        lora_rank = kwargs.get('lora_rank')
+        if lora_rank is not None:
+            cmd.extend(["--rank", str(lora_rank)]) # Diffusers LoRA scripts typically use 'rank'
+        
+        if kwargs.get('report_to'):
+            cmd.extend(["--report_to", kwargs['report_to']])
+        
+        if kwargs.get('push_to_hub', False):
+            cmd.append("--push_to_hub")
+            hub_model_id = kwargs.get('hub_model_id')
+            if hub_model_id:
+                 cmd.extend(["--hub_model_id", hub_model_id])
+        
+        # Add checkpointing steps if provided
+        checkpointing_steps = kwargs.get('checkpointing_steps')
+        if checkpointing_steps:
+            cmd.extend(["--checkpointing_steps", str(checkpointing_steps)])
+            cmd.extend(["--checkpoints_total_limit", str(kwargs.get('checkpoints_total_limit', 2))]) # Sensible default
+
+        return cmd
+    
+    def train_dreambooth(self, 
+                        train_data_path: str, # Can be path to JSON or image directory
+                        model_name: Optional[str] = None, # Optional, will be auto-generated if None
+                        val_data_path: Optional[str] = None, # Can be path to JSON or image directory for validation
+                        output_dir: Optional[str] = None, 
+                        **kwargs) -> str:
+        
+        base_output_dir = Path(output_dir) if output_dir else self.output_base_dir
+        
+        _model_name = model_name
+        if not _model_name:
+            safe_base_id = self.base_model_id.split('/')[-1].replace('-','_')
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            _model_name = f"{safe_base_id}_dreambooth_{timestamp}"
         else:
-            target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
+            # Ensure model_name is safe for directory creation if provided by user
+            _model_name = _model_name.replace("/", "_").replace("\\", "_")
+            # Optionally add timestamp to user-provided name to avoid collisions
+            # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # _model_name = f"{_model_name}_{timestamp}"
+
+        model_final_output_dir = base_output_dir / _model_name
+        model_final_output_dir.mkdir(parents=True, exist_ok=True)
         
-        lora_config = LoraConfig(
-            r=lora_rank,
-            lora_alpha=lora_alpha,
-            target_modules=target_modules,
-            lora_dropout=lora_dropout,
-            bias="none",
-        )
+        self.logger.info(f"Starting DreamBooth training for {self.model_type.upper()} model")
+        self.logger.info(f"Base model: {self.base_model_id}")
+        self.logger.info(f"Output model name: {_model_name}")
+        self.logger.info(f"Model will be saved to: {model_final_output_dir}")
 
-        pipe.unet = get_peft_model(pipe.unet, lora_config)
+        train_input_path = Path(train_data_path)
+        validation_input_dir_for_command: Optional[Path] = None
 
-        train_dataset = EmojiDataset(train_data_path, pipe.tokenizer, is_sdxl=is_sdxl)
-        val_dataset = EmojiDataset(val_data_path, pipe.tokenizer, is_sdxl=is_sdxl)
+        # Handle validation data path for _build_training_command
+        # This allows passing a direct image folder for validation to the script
+        if val_data_path:
+            val_input_path = Path(val_data_path)
+            if val_input_path.is_dir() and any(val_input_path.iterdir()):
+                self.logger.info(f"Using direct validation image directory: {val_input_path}")
+                validation_input_dir_for_command = val_input_path
+            elif val_input_path.is_file() and val_input_path.suffix.lower() == ".json":
+                # If val_data_path is a JSON, the script might handle it, or we might need to process it like legacy train data.
+                # For now, we pass it and let the script decide, or add specific logic if needed.
+                self.logger.info(f"Validation data path is a JSON file: {val_input_path}. Passing as is or requires script to handle.")
+                # If your script expects a folder, you would process this JSON into a temp image folder similar to _legacy_prepare_emoji_data_from_json
+                # For simplicity, this example assumes the script can take a validation JSON or we pass None if it requires a dir and gets a JSON.
+            else:
+                self.logger.warning(f"Validation data path {val_input_path} is not a valid directory or JSON file. Validation might be skipped or fail.")
 
-        train_dataloader = DataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=4,
-            pin_memory=True,
-            persistent_workers=True,
-        )
-
-        val_dataloader = DataLoader(
-            val_dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=4,
-            pin_memory=True,
-            persistent_workers=True,
-        )
-
-        optimizer = torch.optim.AdamW(
-            pipe.unet.parameters(),
-            lr=learning_rate,
-        )
-
-        lr_scheduler = get_scheduler(
-            "cosine",
-            optimizer=optimizer,
-            num_warmup_steps=0,
-            num_training_steps=len(train_dataloader) * num_epochs,
-        )        
-
-        # # move encoders to right device after the accelerator is prepared
-        # if is_sdxl:
-        #     pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
-        #     pipe.text_encoder_2 = pipe.text_encoder_2.to(accelerator.device, dtype=DTYPE)
-        #     pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
-        # else:
-        #     pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
-        #     pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
-
-        # prep these with the accelerator
-        pipe.unet, optimizer, train_dataloader, val_dataloader, lr_scheduler = accelerator.prepare(
-            pipe.unet, optimizer, train_dataloader, val_dataloader, lr_scheduler
-        )
-
-        # move encoders again to make sure
-        # if is_sdxl:
-        #     pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
-        #     pipe.text_encoder_2 = pipe.text_encoder_2.to(accelerator.device, dtype=DTYPE)
-        #     pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
-        # else:
-        #     pipe.text_encoder = pipe.text_encoder.to(accelerator.device, dtype=DTYPE)
-        #     pipe.vae = pipe.vae.to(accelerator.device, dtype=DTYPE)
-        
-        print(f"DEBUG: pipe.unet.device: {pipe.unet.device}")
-        print(f"DEBUG: pipe.text_encoder.device: {pipe.text_encoder.device}")
-        print(f"DEBUG: pipe.text_encoder_2.device: {pipe.text_encoder_2.device}")
-
-        self.logger.info("Starting training...")
-        global_step = 0
-        best_val_loss = float('inf')
-
-        for epoch in range(num_epochs):
-            progress_bar = tqdm(total=len(train_dataloader), disable=not accelerator.is_local_main_process)
-            progress_bar.set_description(f"Epoch {epoch}")
-
-            # Training loop
-            pipe.unet.train()
-            for step, batch in enumerate(train_dataloader):
-                with accelerator.accumulate(pipe.unet):
-                    # make sure that data is on the correct device and dtype
-                    batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, dtype=DTYPE)
-                    batch["input_ids"] = batch["input_ids"].to(accelerator.device)
-
-                    latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
-                    latents = latents * 0.18215
-
-                    # Use float16 for noise to match other tensors
-                    noise = torch.randn_like(latents, dtype=torch.float16)
-                    timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
-                    noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
-
-                    # forward pass
-                    if is_sdxl:
-                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0] ## [1, 77, 1280] -> [bs, seq_len, hidden_size]
-                        
-                        # Debug the encoder_hidden_states shape and dtype
-                        print(f"DEBUG: encoder_hidden_states shape: {encoder_hidden_states.shape}")
-                        print(f"DEBUG: encoder_hidden_states dtype: {encoder_hidden_states.dtype}")
-                        
-                        # Get the expected hidden size for SDXL from the UNet config
-                        expected_dim = None
-                        if hasattr(pipe.unet, "config") and hasattr(pipe.unet.config, "cross_attention_dim"):
-                            expected_dim = pipe.unet.config.cross_attention_dim
-                        
-                        # Check if we need to adjust the hidden states dimensions
-                        if expected_dim is not None and encoder_hidden_states.shape[-1] != expected_dim:
-                            # Create projection layer in the same dtype as input
-                            projection = torch.nn.Linear(
-                                encoder_hidden_states.shape[-1], 
-                                expected_dim,
-                                device=accelerator.device,
-                                dtype=encoder_hidden_states.dtype  # Match input dtype
-                            )
-                            
-                            # Validate input tensor
-                            if torch.isnan(encoder_hidden_states).any() or torch.isinf(encoder_hidden_states).any():
-                                raise ValueError("NaN or Inf found in encoder_hidden_states before projection")
-                            
-                            # Apply the projection
-                            encoder_hidden_states = projection(encoder_hidden_states)
-                            
-                            # Validate output tensor
-                            if torch.isnan(encoder_hidden_states).any() or torch.isinf(encoder_hidden_states).any():
-                                raise ValueError("NaN or Inf found in encoder_hidden_states after projection")
-                            
-                            print(f"DEBUG: Adjusted encoder_hidden_states shape: {encoder_hidden_states.shape}")
-                            print(f"DEBUG: Projection layer dtype: {next(projection.parameters()).dtype}")
-                            
-                            # Verify shape is as expected
-                            assert encoder_hidden_states.shape[0] == batch_size, "Batch size changed after projection!"
-                            assert encoder_hidden_states.shape[2] == expected_dim, "Hidden dimension not properly adjusted!"
-                        
-                        # Convert to fp16 after all operations are complete
-                        if encoder_hidden_states.dtype != torch.float16:
-                            encoder_hidden_states = encoder_hidden_states.to(torch.float16)
-                            print(f"DEBUG: Converted encoder_hidden_states to float16 after projection")
-                        
-                        encoder_output = pipe.text_encoder_2(batch["input_ids"])
-                        
-                        # Add detailed debug information about encoder outputs
-                        print(f"DEBUG: encoder_output type: {type(encoder_output)}")
-                        print(f"DEBUG: encoder_output length: {len(encoder_output) if isinstance(encoder_output, tuple) else 'not tuple'}")
-                        print(f"DEBUG: encoder_output[0] shape: {encoder_output[0].shape}")
-                        print(f"DEBUG: encoder_output[0] dtype: {encoder_output[0].dtype}")
-                        
-                        if isinstance(encoder_output, tuple) and len(encoder_output) > 1:
-                            print(f"DEBUG: encoder_output[1] exists: {encoder_output[1] is not None}")
-                            if encoder_output[1] is not None:
-                                print(f"DEBUG: encoder_output[1] shape: {encoder_output[1].shape}")
-                                print(f"DEBUG: encoder_output[1] dtype: {encoder_output[1].dtype}")
-                        
-                        # Try to get pooled output from SDXL text_encoder_2
-                        if isinstance(encoder_output, tuple) and len(encoder_output) > 1 and encoder_output[1] is not None:
-                            # Some SDXL models have pooled output as second item
-                            pooled_output = encoder_output[1]
-                            print(f"DEBUG: Using pooled_output from encoder_output[1]: {pooled_output.shape}")
-                        else:
-                            # Check if we have a 2D tensor with shape [batch_size, hidden_dim]
-                            if encoder_output[0].ndim == 2:
-                                # This is already the right shape (batch_size, hidden_dim)
-                                pooled_output = encoder_output[0]
-                                print(f"DEBUG: Found 2D tensor with correct shape: {pooled_output.shape}")
-                            elif encoder_output[0].ndim == 3:
-                                # Get the pooled output by taking CLS token or using mean
-                                if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
-                                    # Using CLS token (first token) is often better than mean
-                                    pooled_output = encoder_output[0][:, 0, :]
-                                    print(f"DEBUG: Using CLS token as pooled_output: {pooled_output.shape}")
-                                else:
-                                    # Fallback to mean with keepdim to preserve dimensions
-                                    pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
-                            else:
-                                pooled_output = encoder_output[0].reshape(1, -1)
-                        
-                        # Ensure we have the right shape [batch_size, hidden_dim]
-                        if len(pooled_output.shape) == 1:
-                            # Handle 1D tensor case
-                            if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
-                                hidden_dim = pipe.text_encoder_2.config.projection_dim
-                            else:
-                                hidden_dim = 1280  # Default SDXL hidden dimension
-                            
-                            pooled_output = pooled_output.reshape(1, hidden_dim)
-                            print(f"DEBUG: Reshaped 1D pooled_output to: {pooled_output.shape}")
-                        
-                        # Convert to fp16 after all operations are complete
-                        if pooled_output.dtype != torch.float16:
-                            pooled_output = pooled_output.to(torch.float16)
-                            print(f"DEBUG: Converted pooled_output to float16")
-                        
-                        print(f"DEBUG: Final pooled_output shape: {pooled_output.shape}")
-                        print(f"DEBUG: Final pooled_output dtype: {pooled_output.dtype}")
-                        
-                        # Get model's expected dimensions for debugging
-                        if hasattr(pipe.unet, "config"):
-                            if hasattr(pipe.unet.config, "addition_embed_dim"):
-                                print(f"DEBUG: UNet expects addition_embed_dim: {pipe.unet.config.addition_embed_dim}")
-                            if hasattr(pipe.unet.config, "addition_time_embed_dim"):
-                                print(f"DEBUG: UNet expects addition_time_embed_dim: {pipe.unet.config.addition_time_embed_dim}")
-                        
-                        bs = batch["input_ids"].shape[0]
-                        target_size = (512,512)
-                        time_ids = torch.tensor(
-                            [
-                                [target_size[0], target_size[1], 0, 0, target_size[0], target_size[1]]
-                                for _ in range(bs)
-                            ],
-                            device=accelerator.device,
-                            dtype=torch.float16
-                        )
-                        
-                        print(f"DEBUG: time_ids shape: {time_ids.shape}")
-                        print(f"DEBUG: time_ids dtype: {time_ids.dtype}")
-                        
-                        # Check tensor device and dtype
-                        print(f"DEBUG: pooled_output device: {pooled_output.device}, dtype: {pooled_output.dtype}")
-                        print(f"DEBUG: time_ids device: {time_ids.device}, dtype: {time_ids.dtype}")
-                        print(f"DEBUG: encoder_hidden_states device: {encoder_hidden_states.device}, dtype: {encoder_hidden_states.dtype}")
-                                                
-                        added_cond_kwargs = {
-                            "text_embeds": pooled_output,
-                            "time_ids": time_ids
-                        }
-
-                        # Validate tensors before UNet forward pass
-                        if torch.isnan(noisy_latents).any() or torch.isinf(noisy_latents).any():
-                            raise ValueError("NaN or Inf found in noisy_latents before UNet")
-                        if torch.isnan(encoder_hidden_states).any() or torch.isinf(encoder_hidden_states).any():
-                            raise ValueError("NaN or Inf found in encoder_hidden_states before UNet")
-                        if torch.isnan(pooled_output).any() or torch.isinf(pooled_output).any():
-                            raise ValueError("NaN or Inf found in pooled_output before UNet")
-                        if torch.isnan(time_ids).any() or torch.isinf(time_ids).any():
-                            raise ValueError("NaN or Inf found in time_ids before UNet")
-
-                        noise_pred = pipe.unet(
-                            noisy_latents,
-                            timesteps,
-                            encoder_hidden_states,
-                            added_cond_kwargs=added_cond_kwargs
-                        ).sample
-                    else:
-                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                        # Convert to fp16 for memory efficiency
-                        if encoder_hidden_states.dtype != torch.float16:
-                            encoder_hidden_states = encoder_hidden_states.to(torch.float16)
-                        
-                        # Validate tensors before UNet forward pass
-                        if torch.isnan(noisy_latents).any() or torch.isinf(noisy_latents).any():
-                            raise ValueError("NaN or Inf found in noisy_latents before UNet")
-                        if torch.isnan(encoder_hidden_states).any() or torch.isinf(encoder_hidden_states).any():
-                            raise ValueError("NaN or Inf found in encoder_hidden_states before UNet")
-                            
-                        noise_pred = pipe.unet(
-                            noisy_latents,
-                            timesteps,
-                            encoder_hidden_states
-                        ).sample
-
-                    # Validate prediction before loss computation
-                    if torch.isnan(noise_pred).any() or torch.isinf(noise_pred).any():
-                        raise ValueError("NaN or Inf found in noise_pred before loss computation")
-                    if torch.isnan(noise).any() or torch.isinf(noise).any():
-                        raise ValueError("NaN or Inf found in noise before loss computation")
-
-                    # Only convert to fp32 at the very last moment for loss computation
-                    noise_pred = noise_pred.to(torch.float32)
-                    noise = noise.to(torch.float32)
-
-                    # Compute loss in fp32 for numerical stability
-                    loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
-                    loss = loss.mean([1, 2, 3]).mean()
-
-                    # Let the accelerator handle mixed precision backward pass
-                    accelerator.backward(loss)
-
-                    if accelerator.sync_gradients:
-                        accelerator.clip_grad_norm_(pipe.unet.parameters(), 1.0)
-                        optimizer.step()
-                        lr_scheduler.step()
-                        optimizer.zero_grad()
-
-                    progress_bar.update(1)
-                    global_step += 1
-                    
-                    if global_step % 100 == 0:
-                        self.logger.info(f"Step {global_step}: Loss = {loss.item():.4f}")
-                    
-            # validation loop
-            pipe.unet.eval()
-            val_loss = 0.0
-            with torch.no_grad():
-                for batch in val_dataloader:
-                    batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, dtype=DTYPE)
-                    batch["input_ids"] = batch["input_ids"].to(accelerator.device)
-
-                    latents = pipe.vae.encode(batch["pixel_values"]).latent_dist.sample()
-                    latents = latents * 0.18215
-                    
-                    # Use float16 for noise to match other tensors
-                    noise = torch.randn_like(latents, dtype=torch.float16)
-                    timesteps = torch.randint(0, pipe.scheduler.config.num_train_timesteps, (latents.shape[0],), device=accelerator.device)
-                    noisy_latents = pipe.scheduler.add_noise(latents, noise, timesteps)
-
-                    if is_sdxl:
-                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                        
-                        # Debug the encoder_hidden_states shape
-                        print(f"DEBUG-Val: encoder_hidden_states shape: {encoder_hidden_states.shape}")
-                        
-                        # Get the expected hidden size for SDXL from the UNet config
-                        expected_dim = None
-                        if hasattr(pipe.unet, "config") and hasattr(pipe.unet.config, "cross_attention_dim"):
-                            expected_dim = pipe.unet.config.cross_attention_dim
-                        
-                        # Check if we need to adjust the hidden states dimensions
-                        if expected_dim is not None and encoder_hidden_states.shape[-1] != expected_dim:
-                            # Create a projection layer if needed
-                            projection = torch.nn.Linear(
-                                encoder_hidden_states.shape[-1], 
-                                expected_dim,
-                                device=accelerator.device,
-                                dtype=torch.float16  # Force fp16 for memory efficiency
-                            )
-                            
-                            # Apply the projection
-                            encoder_hidden_states = projection(encoder_hidden_states)
-                            print(f"DEBUG-Val: Adjusted encoder_hidden_states shape: {encoder_hidden_states.shape}")
-                            
-                            # Verify shape is as expected
-                            assert encoder_hidden_states.shape[0] == batch_size, "Batch size changed after projection!"
-                            assert encoder_hidden_states.shape[2] == expected_dim, "Hidden dimension not properly adjusted!"
-                        
-                        encoder_output = pipe.text_encoder_2(batch["input_ids"])
-                        
-                        # Add detailed debug information about encoder outputs
-                        print(f"DEBUG-Val: encoder_output type: {type(encoder_output)}")
-                        print(f"DEBUG-Val: encoder_output length: {len(encoder_output) if isinstance(encoder_output, tuple) else 'not tuple'}")
-                        print(f"DEBUG-Val: encoder_output[0] shape: {encoder_output[0].shape}")
-                        
-                        if isinstance(encoder_output, tuple) and len(encoder_output) > 1:
-                            print(f"DEBUG-Val: encoder_output[1] exists: {encoder_output[1] is not None}")
-                            if encoder_output[1] is not None:
-                                print(f"DEBUG-Val: encoder_output[1] shape: {encoder_output[1].shape}")
-                        
-                        # Try to get pooled output from SDXL text_encoder_2
-                        if isinstance(encoder_output, tuple) and len(encoder_output) > 1 and encoder_output[1] is not None:
-                            # Some SDXL models have pooled output as second item
-                            pooled_output = encoder_output[1]
-                        else:
-                            if encoder_output[0].ndim == 2:
-                                pooled_output = encoder_output[0]
-                            elif encoder_output[0].ndim == 3:
-                                if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
-                                    pooled_output = encoder_output[0][:, 0, :]
-                                else:
-                                    pooled_output = encoder_output[0].mean(dim=1, keepdim=True)
-                                    print(f"DEBUG-Val: Using mean with keepdim=True as pooled_output: {pooled_output.shape}")
-                            else:
-                                # Unexpected shape, try to adapt
-                                print(f"DEBUG-Val: Unexpected tensor dimension: {encoder_output[0].ndim}")
-                                # Reshape to expected format
-                                pooled_output = encoder_output[0].reshape(1, -1)
-                                print(f"DEBUG-Val: Reshaped to: {pooled_output.shape}")
-                        
-                        # Ensure we have the right shape [batch_size, hidden_dim]
-                        if len(pooled_output.shape) == 1:
-                            if hasattr(pipe.text_encoder_2, "config") and hasattr(pipe.text_encoder_2.config, "projection_dim"):
-                                hidden_dim = pipe.text_encoder_2.config.projection_dim
-                            else:
-                                hidden_dim = 1280  # Default SDXL hidden dimension
-                            
-                            pooled_output = pooled_output.reshape(1, hidden_dim)
-                            print(f"DEBUG-Val: Reshaped 1D pooled_output to: {pooled_output.shape}")
-                        
-                            # Convert to fp16 if needed, but only after all operations are done
-                            if pooled_output.dtype != torch.float16:
-                                pooled_output = pooled_output.to(torch.float16)
-                                print(f"DEBUG-Val: Converted pooled_output to float16")
-                            
-                            # Convert encoder_hidden_states to fp16 if needed
-                            if encoder_hidden_states.dtype != torch.float16:
-                                encoder_hidden_states = encoder_hidden_states.to(torch.float16)
-                                print(f"DEBUG-Val: Converted encoder_hidden_states to float16")
-                            
-                            print(f"DEBUG-Val: Final pooled_output shape: {pooled_output.shape}")
-                            
-                            # Get model's expected dimensions for debugging
-                            if hasattr(pipe.unet, "config"):
-                                if hasattr(pipe.unet.config, "addition_embed_dim"):
-                                    print(f"DEBUG-Val: UNet expects addition_embed_dim: {pipe.unet.config.addition_embed_dim}")
-                                if hasattr(pipe.unet.config, "addition_time_embed_dim"):
-                                    print(f"DEBUG-Val: UNet expects addition_time_embed_dim: {pipe.unet.config.addition_time_embed_dim}")
-
-                        bs = batch["input_ids"].shape[0]
-                        target_size = (512, 512)
-                        time_ids = torch.tensor(
-                            [
-                                [target_size[0], target_size[1], 0, 0, target_size[0], target_size[1]]
-                                for _ in range(bs)
-                            ],
-                            device=accelerator.device,
-                            dtype=torch.float16
-                        )
-                        
-                        # Check tensor device and dtype
-                        print(f"DEBUG-Val: time_ids shape: {time_ids.shape}")
-                        print(f"DEBUG-Val: pooled_output device: {pooled_output.device}, dtype: {pooled_output.dtype}")
-                        print(f"DEBUG-Val: time_ids device: {time_ids.device}, dtype: {time_ids.dtype}")
-                        print(f"DEBUG-Val: encoder_hidden_states device: {encoder_hidden_states.device}, dtype: {encoder_hidden_states.dtype}")
-                        
-                        added_cond_kwargs = {
-                            "text_embeds": pooled_output,
-                            "time_ids": time_ids
-                        }
-
-                        noise_pred = pipe.unet(
-                            noisy_latents,
-                            timesteps,
-                            encoder_hidden_states,
-                            added_cond_kwargs=added_cond_kwargs
-                        ).sample
-                    else:
-                        encoder_hidden_states = pipe.text_encoder(batch["input_ids"])[0]
-                        noise_pred = pipe.unet(
-                            noisy_latents,
-                            timesteps,
-                            encoder_hidden_states
-                        ).sample
-                    
-                    # Only convert to fp32 at the very last moment for loss computation
-                    noise_pred = noise_pred.to(torch.float32)
-                    noise = noise.to(torch.float32)
-
-                    loss = torch.nn.functional.mse_loss(noise_pred, noise, reduction="none")
-                    loss = loss.mean([1, 2, 3]).mean()
-
-                    val_loss += loss.item()
-
-            val_loss /= len(val_dataloader)
-            self.logger.info(f"Epoch {epoch}: Validation Loss = {val_loss:.4f}")
-
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                output_path = self.output_dir / model_name
-                output_path.mkdir(exist_ok=True)
-
-                pipe.unet.save_pretrained(output_path / "lora_weights")
-                pipe.save_pretrained(output_path)
-
-                model_cache.register_model(model_name, str(output_path))
-
-                self.logger.info(f"Saved best model to {output_path}")
-        
-        self.best_val_loss = best_val_loss
-        return str(output_path), best_val_loss
-                            
-
-    def train_dreambooth(
-        self,
-        train_data_path: str,
-        val_data_path: str,
-        model_name: str,
-        instance_prompt: str = "emoji style",
-        class_prompt: str = "emoji",
-        learning_rate: float = 1e-4,
-        num_epochs: int = 100,
-        batch_size: int = 1,
-        gradient_accumulation_steps: int = 4,
-        mixed_precision: str = "fp16",
-        seed: int = 42,
-    ) -> str:
-        """
-        Fine-tune model using Dreambooth
-        
-        Args:
-            train_data_path: Path to training data JSON
-            val_data_path: Path to validation data JSON
-            model_name: Name for the fine-tuned model
-            instance_prompt: Prompt for the specific style
-            class_prompt: Prompt for the general class
-            learning_rate: Learning rate for training
-            num_epochs: Number of training epochs
-            batch_size: Batch size for training
-            gradient_accumulation_steps: Number of steps to accumulate gradients
-            mixed_precision: Mixed precision training type
-            seed: Random seed for reproducibility
+        if train_input_path.is_dir():
+            self.logger.info(f"Training data is a directory: {train_input_path}. Using directly.")
+            instance_dir_for_command = train_input_path
             
-        Returns:
-            Path to the saved model
-        """
-        # Implementation will be similar to LoRA but with Dreambooth-specific modifications
-        # This is a placeholder for now
-        pass
+            if not any(instance_dir_for_command.iterdir()):
+                self.logger.error(f"Instance data directory {instance_dir_for_command} is empty.")
+                raise ValueError(f"No training images found in {instance_dir_for_command}. Training aborted.")
 
-    def train_full(
-        self,
-        train_data_path: str,
-        val_data_path: str,
-        model_name: str,
-        learning_rate: float = 1e-4,
-        num_epochs: int = 100,
-        batch_size: int = 1,
-        gradient_accumulation_steps: int = 4,
-        mixed_precision: str = "fp16",
-        seed: int = 42,
-    ) -> str:
-        """
-        Full fine-tuning of the model
+            # No temporary directory needed for data prep if input is already an image folder
+            training_cmd_args = self._build_training_command(
+                instance_data_dir=instance_dir_for_command,
+                output_dir=model_final_output_dir,
+                validation_data_dir=validation_input_dir_for_command, # Pass resolved validation image dir
+                **kwargs
+            )
+            self._execute_training_command(training_cmd_args, model_final_output_dir)
         
-        Args:
-            train_data_path: Path to training data JSON
-            val_data_path: Path to validation data JSON
-            model_name: Name for the fine-tuned model
-            learning_rate: Learning rate for training
-            num_epochs: Number of training epochs
-            batch_size: Batch size for training
-            gradient_accumulation_steps: Number of steps to accumulate gradients
-            mixed_precision: Mixed precision training type
-            seed: Random seed for reproducibility
-            
-        Returns:
-            Path to the saved model
-        """
-        # Implementation will be similar to LoRA but without LoRA-specific modifications
-        # This is a placeholder for now
-        pass
+        elif train_input_path.is_file() and train_input_path.suffix.lower() == ".json":
+            self.logger.info(f"Training data is a JSON file: {train_input_path}. Using legacy preparation.")
+            with tempfile.TemporaryDirectory() as temp_dir_str:
+                temp_path = Path(temp_dir_str)
+                instance_dir_for_command = self._legacy_prepare_emoji_data_from_json(str(train_input_path), temp_path)
+                
+                if not any(instance_dir_for_command.iterdir()):
+                     self.logger.error(f"Instance data directory {instance_dir_for_command} (from JSON) is empty.")
+                     raise ValueError(f"No training images prepared from {train_input_path}. Training aborted.")
 
-    def list_fine_tuned_models(self) -> List[str]:
-        """List all fine-tuned models."""
-        return [d.name for d in self.output_dir.iterdir() if d.is_dir()] 
+                training_cmd_args = self._build_training_command(
+                    instance_data_dir=instance_dir_for_command,
+                    output_dir=model_final_output_dir,
+                    validation_data_dir=validation_input_dir_for_command, # Pass resolved validation image dir
+                    **kwargs
+                )
+                self._execute_training_command(training_cmd_args, model_final_output_dir)
+        else:
+            raise FileNotFoundError(f"Train data path {train_input_path} is not a valid directory or .json file.")
+        
+        # Save model metadata
+        serializable_kwargs = {k: str(v) if isinstance(v, Path) else v for k, v in kwargs.items()}
+        metadata = {
+            "model_name": _model_name, 
+            "base_model": self.base_model_id,
+            "model_type": self.model_type,
+            "training_date": datetime.now().isoformat(),
+            "training_params": serializable_kwargs,
+            "instance_prompt": kwargs.get('instance_prompt', 'sks emoji'),
+            "lora_rank": kwargs.get('lora_rank')
+        }
+        
+        metadata_path = model_final_output_dir / "metadata.json"
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        self.logger.info(f"Model and metadata saved to: {model_final_output_dir}")
+        return str(model_final_output_dir)
+
+    def _execute_training_command(self, training_cmd_args: List[str], model_output_dir: Path):
+        command_str = ' '.join(map(str, training_cmd_args))
+        self.logger.info(f"Training command: {command_str}")
+        
+        script_to_execute = Path(training_cmd_args[2]) # accelerate launch SCRIPT_PATH ...
+        script_exec_cwd = script_to_execute.parent 
+        self.logger.info(f"Executing training script from CWD: {script_exec_cwd}")
+
+        try:
+            process = subprocess.Popen(
+                training_cmd_args, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, 
+                text=True, 
+                cwd=script_exec_cwd,
+                env=os.environ.copy() # Ensure the subprocess inherits the current environment
+            )
+            stdout, stderr = process.communicate()
+
+            if process.returncode == 0:
+                self.logger.info("Training completed successfully!")
+                if stdout:
+                    self.logger.info(f"Training STDOUT (last 1000 chars):\n{stdout[-1000:]}")
+            else:
+                self.logger.error(f"Training failed with return code {process.returncode}")
+                if stdout:
+                    self.logger.error(f"Training STDOUT:\n{stdout}")
+                if stderr:
+                    self.logger.error(f"Training STDERR:\n{stderr}")
+                raise RuntimeError(f"Training failed. Check logs. STDERR (first 500 chars): {stderr[:500]}")
+            
+        except FileNotFoundError as e:
+             self.logger.error(f"The training script {script_to_execute} was not found or another part of the command caused a FileNotFoundError. Error: {e}")
+             self.logger.error(f"Please ensure that 'accelerate' is installed and accessible, and the script path is correct.")
+             raise
+        except Exception as e:
+            self.logger.error(f"An unexpected error occurred during training execution: {e}")
+            raise
+
+    # train_lora and train_full remain as legacy wrappers
+    def train_lora(self, *args, **kwargs):
+        self.logger.info("train_lora() is a legacy method, redirecting to train_dreambooth().")
+        return self.train_dreambooth(*args, **kwargs)
+    
+    def train_full(self, *args, **kwargs):
+        self.logger.info("train_full() is a legacy method, redirecting to train_dreambooth().")
+        return self.train_dreambooth(*args, **kwargs)
+    
+    @staticmethod
+    def list_fine_tuned_models(models_base_dir: Optional[str] = None) -> List[Dict[str, Any]]:
+        logger = logging.getLogger(__name__ + ".list_fine_tuned_models") 
+        actual_models_dir = Path(models_base_dir) if models_base_dir else Path("fine_tuned_models")
+        
+        if not actual_models_dir.exists() or not actual_models_dir.is_dir():
+            logger.info(f"Fine-tuned models directory not found or is not a directory: {actual_models_dir}")
+            return []
+        
+        models_info = []
+        for model_dir_item in actual_models_dir.iterdir():
+            if model_dir_item.is_dir():
+                metadata_path = model_dir_item / "metadata.json"
+                model_entry = {
+                    "name": model_dir_item.name,
+                    "path": str(model_dir_item.resolve()),
+                    "base_model": "unknown",
+                    "model_type": "unknown", 
+                    "training_date": "unknown",
+                    "instance_prompt": "unknown",
+                    "lora_rank": "unknown"
+                }
+                if metadata_path.exists():
+                    try:
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                        model_entry.update({
+                            "base_model": metadata.get("base_model", model_entry["base_model"]),
+                            "model_type": metadata.get("model_type", model_entry["model_type"]),
+                            "training_date": metadata.get("training_date", model_entry["training_date"]),
+                            "instance_prompt": metadata.get("instance_prompt", model_entry["instance_prompt"]),
+                            "lora_rank": metadata.get("lora_rank", model_entry["lora_rank"])
+                        })
+                    except json.JSONDecodeError:
+                        logger.warning(f"Corrupted metadata for model {model_dir_item.name}, listing with defaults.")
+                else:
+                    logger.warning(f"No metadata.json found for model {model_dir_item.name}, listing with defaults.")
+                models_info.append(model_entry)
+        
+        return sorted(
+            models_info, 
+            key=lambda x: x["training_date"] if x["training_date"] != "unknown" else "0000-00-00T00:00:00", 
+            reverse=True
+        )
+    
+    @staticmethod
+    def get_model_info(model_name: str, models_base_dir: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        logger = logging.getLogger(__name__ + ".get_model_info")
+        actual_models_dir = Path(models_base_dir) if models_base_dir else Path("fine_tuned_models")
+        model_path = actual_models_dir / model_name
+        metadata_path = model_path / "metadata.json"
+        
+        if not metadata_path.exists():
+            logger.warning(f"Metadata file not found for model {model_name} at {metadata_path}")
+            return None
+        
+        try:
+            with open(metadata_path, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            logger.error(f"Could not decode metadata for model {model_name} at {metadata_path}")
+            return None 

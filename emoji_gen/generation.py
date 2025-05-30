@@ -12,7 +12,7 @@ def generate_emoji(
     output_path: Optional[str] = None,
     num_inference_steps: int = 40,
     guidance_scale: float = 10,
-    num_images: int = 1 ## maybe not needed ???
+    # num_images: int = 1 ## functionality to save multiple images is not implemented
 ):
    
     try:
@@ -26,7 +26,7 @@ def generate_emoji(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
-            num_images_per_prompt=num_images ## maybe not needed ???
+            # num_images_per_prompt=num_images ## functionality to save multiple images is not implemented
         )
         
         # Check if we got any images
