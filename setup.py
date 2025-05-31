@@ -8,7 +8,9 @@ setup(
     # auto install dependencies
     install_requires=[
         "torch",
-        "diffusers @ git+https://github.com/huggingface/diffusers.git",
+        "torchvision",
+        "torchaudio"
+        "diffusers @ git+https://github.com/huggingface/diffusers.git", ## IMPORTANT from the git here
         "transformers",
         "accelerate",
         "safetensors",
@@ -19,6 +21,7 @@ setup(
         # fine tuning dependencies
         "peft",  # For LoRA
         "xformers",
+        "bitsandbytes", ## only needed for 8bit adam optim
         # web/server dependencies (ensure flask is listed once)
         "flask",
         "flask-cors",

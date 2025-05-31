@@ -219,7 +219,7 @@ class EmojiFineTuner:
             # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             # _model_name = f"{_model_name}_{timestamp}"
 
-        model_final_output_dir = base_output_dir / _model_name
+        model_final_output_dir = Path(kwargs.get('output_dir', base_output_dir / model_name))
         model_final_output_dir.mkdir(parents=True, exist_ok=True)
         
         self.logger.info(f"Starting DreamBooth training for {self.model_type.upper()} model")
