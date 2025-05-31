@@ -113,7 +113,6 @@ class EmojiFineTuner:
             "--lr_scheduler", kwargs.get("lr_scheduler", "constant"),
             "--lr_warmup_steps", str(kwargs.get("lr_warmup_steps", "0")),
             "--max_train_steps", str(kwargs.get('max_train_steps', 500)),
-            "--lora-rank", "32", ## sets the lora rank
             "--seed", str(kwargs.get('seed', 42)),
         ]
 
@@ -302,15 +301,13 @@ class EmojiFineTuner:
         self.logger.info(f"Executing training script from CWD: {script_exec_cwd}")
 
         try:
-            process = subprocess.Popen(
-                training_cmd_args, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, 
-                text=True, 
-                cwd=script_exec_cwd,
-                env=os.environ.copy() # Ensure the subprocess inherits the current environment
-            )
-            stdout, stderr = process.communicate()
+            process = subprocess.run(training_cmd_args, cwd=script_exec_cwd, check=True)
+            # process = subprocess.Popen(
+            #    training_cmd_args, 
+            #    text=True, 
+            #    cwd=script_exec_cwd,
+            #    env=os.environ.copy() # Ensure the subprocess inherits the current environment
+            # )
 
             if process.returncode == 0:
                 self.logger.info("Training completed successfully!")
