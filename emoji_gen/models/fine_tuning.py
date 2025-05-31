@@ -308,19 +308,7 @@ class EmojiFineTuner:
             #    cwd=script_exec_cwd,
             #    env=os.environ.copy() # Ensure the subprocess inherits the current environment
             # )
-
-            if process.returncode == 0:
-                self.logger.info("Training completed successfully!")
-                if stdout:
-                    self.logger.info(f"Training STDOUT (last 1000 chars):\n{stdout[-1000:]}")
-            else:
-                self.logger.error(f"Training failed with return code {process.returncode}")
-                if stdout:
-                    self.logger.error(f"Training STDOUT:\n{stdout}")
-                if stderr:
-                    self.logger.error(f"Training STDERR:\n{stderr}")
-                raise RuntimeError(f"Training failed. Check logs. STDERR (first 500 chars): {stderr[:500]}")
-            
+ 
         except FileNotFoundError as e:
              self.logger.error(f"The training script {script_to_execute} was not found or another part of the command caused a FileNotFoundError. Error: {e}")
              self.logger.error(f"Please ensure that 'accelerate' is installed and accessible, and the script path is correct.")
