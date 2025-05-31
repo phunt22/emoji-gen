@@ -30,6 +30,9 @@ def set_model():
     
     model_name = data['model_name']
     try:
+        # forcing cleanup of old model first to free memory
+        model_manager.cleanup()
+
         success, message = model_manager.initialize_model(model_name)
         if success:
             model = model_manager.get_active_model()
@@ -53,7 +56,7 @@ def generate_emoji():
     prompt = data['prompt']
     num_inference_steps = data.get('num_inference_steps', 25)
     guidance_scale = data.get('guidance_scale', 7.5)
-    num_images = data.get('num_images', 1)
+    # num_images = data.get('num_images', 1) # functionality to save multiple images is not implemented
     output_path = data.get('output_path', None)
     
     if not SERVER_STATE["model"]:
@@ -65,7 +68,7 @@ def generate_emoji():
             prompt=prompt,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
-            num_images_per_prompt=num_images
+            # num_images_per_prompt=num_images # functionality to save multiple images is not implemented
         )
         
         # Save the generated image
