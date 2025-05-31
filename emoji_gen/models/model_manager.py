@@ -141,7 +141,7 @@ class ModelManager:
                     base_model_path = MODEL_ID_MAP.get(base_model, base_model)
 
                     self.active_model = DiffusionPipeline.from_pretrained(
-                        model_path,
+                        base_model_path,
                         torch_dtype=self._dtype,
                         use_safetensors=True, 
                         variant="fp16" if self._device == "cuda" and "sdxl" in model_name else None # var
