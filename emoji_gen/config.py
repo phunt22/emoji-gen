@@ -15,7 +15,7 @@ DTYPE = torch.float32
 # Model defaults
 DEFAULT_MODEL = 'sd3'
 MODEL_ID_MAP = {
-    "sd3": "stabilityai/stable-diffusion-3-medium",
+    "sd3": "stabilityai/stable-diffusion-3-medium-diffusers",
     "SD-XL": "stabilityai/stable-diffusion-xl-base-1.0",    
     # quality of life :)
     "sd-xl": "stabilityai/stable-diffusion-xl-base-1.0",    

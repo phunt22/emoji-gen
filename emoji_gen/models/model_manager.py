@@ -29,8 +29,15 @@ class ModelManager:
         try:
             if hasattr(self, 'active_model') and self.active_model is not None:
                 del self.active_model
-                torch.cuda.empty_cache()
+
+                import gc
                 gc.collect()
+
+                if torch.cuda.is_available:
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache() ## empty again bc why not
+
         except Exception as e:
             print(f"Warning: Error during cleanup: {e}")
         finally:

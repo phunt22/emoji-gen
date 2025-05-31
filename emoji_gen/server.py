@@ -30,6 +30,9 @@ def set_model():
     
     model_name = data['model_name']
     try:
+        # forcing cleanup of old model first to free memory
+        model_manager.cleanup()
+
         success, message = model_manager.initialize_model(model_name)
         if success:
             model = model_manager.get_active_model()
