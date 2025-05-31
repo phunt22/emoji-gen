@@ -115,6 +115,11 @@ class ModelManager:
                         use_safetensors=True, 
                         variant=None
                     ).to(self._device)
+
+                self._model_id = model_name
+                self._initialized = True
+
+                return True, f"Successfully init {model_name} (base)"
                 
                 # self.active_model = pipeline_class.from_pretrained(
                 #     model_path,
@@ -140,16 +145,18 @@ class ModelManager:
 
                     base_model_path = MODEL_ID_MAP.get(base_model, base_model)
 
+                    # from docs
                     self.active_model = DiffusionPipeline.from_pretrained(
                         base_model_path,
                         torch_dtype=self._dtype,
                         use_safetensors=True, 
                         variant="fp16" if self._device == "cuda" and "sdxl" in model_name else None # var
-                    )
+                    ).to(self._device)
+                    self.active_model.load_lora_weights(str(weights_path))
                 
                 else:
                     # add functionality for other FT like FFT or plain dreambooth
-                    pass
+                    return False, f"FFT not implemented yet"
 
                 if self.active_model is None:
                     return False, f"Failed to load model '{model_name}'"
