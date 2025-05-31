@@ -52,7 +52,3 @@ def save_image(prompt, image, output_path: Optional[str] = None) -> Path:
     
     image.save(image_path)
     return image_path
-
-def list_available_models():
-    """List all available models with their information."""
-    return model_manager.list_available_models() 

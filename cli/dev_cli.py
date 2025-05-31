@@ -14,7 +14,6 @@ from emoji_gen.data_utils.dreambooth_preparation import (
     download_emojis as dreambooth_download_emojis, 
     verify_dreambooth_structure
 )
-from emoji_gen.data_utils.convert_data import EmojiDataConverter
 from emoji_gen.models.fine_tuning import EmojiFineTuner
 from emoji_gen.models.model_manager import model_manager
 from emoji_gen.server_client import is_server_running, set_model_remote
@@ -68,32 +67,6 @@ def prepare_and_split_data():
     else:
         logger.error("❌ Data preparation failed or structure is not as expected. Check logs above.")
         print("❌ Data preparation failed or structure is not as expected. Please review the log output.")
-
-def handle_convert_data(args):
-    """Convert existing emoji data to fine-tuning format."""
-    try:
-        output_path_obj = Path(args.output)
-        output_path_obj.parent.mkdir(parents=True, exist_ok=True)
-        converter = EmojiDataConverter(args.emoji_dir, args.metadata_json)
-        logger.info(f"Converting data from {args.emoji_dir} and metadata {args.metadata_json}...")
-        training_data_path = converter.convert_to_training_format(args.output)
-        if args.split:
-            logger.info("Creating train/validation splits from the converted JSON...")
-            splits = converter.create_train_val_split(training_data_path)
-            logger.info(f"Train data (JSON split): {splits['train']}")
-            logger.info(f"Val data (JSON split): {splits['val']}")
-            print(f"\n💡 If using these JSON splits for fine-tuning, update your config.py or CLI args:")
-            print(f"   TRAIN_DATA_PATH = '{splits['train']}'")
-            print(f"   VAL_DATA_PATH = '{splits['val']}'")
-        if args.verify:
-            logger.info("Verifying converted data format (JSON structure)...")
-            is_valid = converter.verify_data_format(training_data_path)
-            logger.info(f"Converted data format is {'valid' if is_valid else 'invalid'}.")
-        print(f"\n🎉 Data conversion to JSON format complete!")
-        print(f"   Output JSON: {training_data_path}")
-        print(f"   Note: This creates a JSON file. The main 'prepare' command creates image folders for DreamBooth.")
-    except Exception as e:
-        logger.error(f"Error converting data: {e}", exc_info=True)
 
 def handle_finetune(args):
     """Handle fine-tuning with the enhanced DreamBooth implementation."""
@@ -285,14 +258,7 @@ def main():
     set_model_parser = subparsers.add_parser('set-model', help='Set active model')
     set_model_parser.add_argument('model', help='Model name or path')
     prepare_parser = subparsers.add_parser('prepare', help='Prepare emoji data (download, process, split for DreamBooth)')
-    
-    # convert_parser = subparsers.add_parser('convert-data', help='Convert existing local emoji data (image folder + metadata JSON) to a unified JSON training file.')
-    # convert_parser.add_argument('--emoji-dir', default='data/emoji_sources', help='Directory with existing emoji images (default: %(default)s)')
-    # convert_parser.add_argument('--metadata-json', default='data/emoji_sources_metadata.json', help='Path to JSON with metadata for existing images (default: %(default)s)')
-    # convert_parser.add_argument('--output', default='data/converted_training_data.json', help='Output path for the converted JSON data (default: %(default)s)')
-    # convert_parser.add_argument('--split', action='store_true', help='Also create train/val JSON splits from the converted data.')
-    # convert_parser.add_argument('--verify', action='store_true', help='Verify the format of the converted JSON data.')
-    
+        
     finetune_parser = subparsers.add_parser('fine-tune', help='Fine-tune model using DreamBooth LoRA with image folders.')
     finetune_parser.add_argument('--model', default=DEFAULT_MODEL, help='Base model ID or path to fine-tune (default: %(default)s)')
     finetune_parser.add_argument('--output', help='Output name for the fine-tuned model directory (auto-generated if not provided)')
@@ -338,8 +304,6 @@ def main():
     if args.command == 'list-models': handle_list_models()
     elif args.command == 'set-model': handle_set_model(args)
     elif args.command == 'prepare': prepare_and_split_data()
-    # elif args.command == 'convert-data':
-    #     handle_convert_data(args)
     elif args.command == 'fine-tune': handle_finetune(args)
     elif args.command == 'list-finetuned': handle_list_finetuned()
     elif args.command == 'start-server': handle_server(args)

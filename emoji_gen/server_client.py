@@ -2,10 +2,7 @@ import requests
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
-
-# Default server URL - can be overridden by environment variable
 DEFAULT_SERVER_URL = os.getenv('EMOJI_SERVER_URL', 'http://127.0.0.1:5000')
 
 def is_server_running(server_url=None):
@@ -52,11 +49,9 @@ def generate_emoji_remote(prompt, num_inference_steps=25, guidance_scale=7.5, nu
             }
         )
         
-        # Check response status code first
         if response.status_code != 200:
             return {"status": "error", "error": f"Server returned status code {response.status_code}"}
         
-        # Check if response is valid JSON
         try:
             data = response.json()
             if data is None:

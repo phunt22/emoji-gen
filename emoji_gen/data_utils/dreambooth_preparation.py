@@ -50,28 +50,7 @@ def setup_folders() -> tuple[Path, Path, Path, Path, Path]:
     
     return data_root_dir, train_dir, val_dir, test_dir, raw_dir
 
-def get_next_number(image_dir: Path) -> int:
-    """Calculates the next sequential number for image filenames in a directory."""
-    existing_files = glob.glob(str(image_dir / "emoji_*.png"))
-    if not existing_files:
-        return 1
-    numbers = []
-    for f_path_str in existing_files:
-        try:
-            name = Path(f_path_str).stem
-            if name.startswith('emoji_'):
-                num = int(name.split('_')[1])
-                numbers.append(num)
-        except (ValueError, IndexError):
-            logger.warning(f"Could not parse number from filename {f_path_str}")
-            continue
-    return max(numbers) + 1 if numbers else 1
-
-def download_emojis(): # Removed train_val_test_split arg, uses config
-    """
-    Download emojis and organize for DreamBooth training and evaluation,
-    using splits defined in config.py.
-    """
+def download_emojis(): # removed train_val_test_split arg, uses config
     data_dir_root, train_dir, val_dir, test_dir, raw_dir = setup_folders()
     
     emoji_data_json_path = Path(EMOJI_DATA_PATH)

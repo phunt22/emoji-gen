@@ -55,15 +55,6 @@ class EmojiFineTuner:
                 src_path = Path(img_path_str)
                 # Attempt to resolve if path is relative to project root or is absolute
                 if not src_path.is_absolute() and not src_path.exists():
-                    # Assuming image_path in JSON might be relative to project root
-                    # project_root = Path(__file__).parent.parent.parent 
-                    # potential_path = project_root / src_path
-                    # self.logger.warning(f"Relative path {src_path} not found, trying from project root: {potential_path}")
-                    # if potential_path.exists():
-                    #    src_path = potential_path
-                    # else:
-                    # As per previous logic, it seemed image_paths in JSON were expected to be directly usable or absolute
-                    # For now, let's keep it simple and assume it should exist as specified or it's an error.
                     pass # Path will be checked by src_path.exists() next
 
                 if src_path.exists():
@@ -394,21 +385,3 @@ class EmojiFineTuner:
             key=lambda x: x["training_date"] if x["training_date"] != "unknown" else "0000-00-00T00:00:00", 
             reverse=True
         )
-    
-    @staticmethod
-    def get_model_info(model_name: str, models_base_dir: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        logger = logging.getLogger(__name__ + ".get_model_info")
-        actual_models_dir = Path(models_base_dir) if models_base_dir else Path("fine_tuned_models")
-        model_path = actual_models_dir / model_name
-        metadata_path = model_path / "metadata.json"
-        
-        if not metadata_path.exists():
-            logger.warning(f"Metadata file not found for model {model_name} at {metadata_path}")
-            return None
-        
-        try:
-            with open(metadata_path, 'r') as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            logger.error(f"Could not decode metadata for model {model_name} at {metadata_path}")
-            return None 
