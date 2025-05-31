@@ -31,23 +31,26 @@ DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "generated_emojis"
 
 DATA_DIR = PROJECT_ROOT / "data"
 DREAMBOOTH_DATA_DIR = DATA_DIR / "dreambooth"
-TRAIN_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "instance_images")  # Directory with training images
-VAL_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "validation_images")  # Directory with validation images
+TRAIN_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "class_images")  # Directory with training images
+VAL_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "instance_images")  # Directory with validation images
 TEST_DATA_PATH_IMAGES = str(DREAMBOOTH_DATA_DIR / "test_images") # For evaluation images
 TEST_METADATA_PATH = str(Path(TEST_DATA_PATH_IMAGES) / "test_metadata.json") # For evaluation prompts/metadata
 
 
 EMOJI_DATA_PATH = str(DATA_DIR / "emojisPruned.json") # Master pruned list used by dreambooth_preparation
 
-# Fine-tuning data split ratios, etc. (Primarily for the old JSON split method)
-# These ratios are less relevant if the primary path is direct image folders.
-TRAIN_RATIO = 0.8 # Adjusted to match dreambooth_preparation internal split
-VAL_RATIO = 0.1   # Adjusted
-TEST_RATIO = 0.1    # No test set for DreamBooth in the new setup
+# # Fine-tuning data split ratios, etc. (Primarily for the old JSON split method)
+# # These ratios are less relevant if the primary path is direct image folders.
+# TRAIN_RATIO = 0.8 # Adjusted to match dreambooth_preparation internal split
+# VAL_RATIO = 0.1   # Adjusted
+# TEST_RATIO = 0.1    # No test set for DreamBooth in the new setup
 
-TOTAL_RATIO = TRAIN_RATIO + VAL_RATIO + TEST_RATIO
-if not (0.999 <= TOTAL_RATIO <= 1.001):
-    raise ValueError(f"Configured split ratios (TRAIN, VAL, TEST) must sum to 1.0, got {TOTAL_RATIO}")
+TEST_COUNT = 50
+INSTANCE_COUNT = 50
+
+# TOTAL_RATIO = TRAIN_RATIO + VAL_RATIO + TEST_RATIO
+# if not (0.999 <= TOTAL_RATIO <= 1.001):
+#     raise ValueError(f"Configured split ratios (TRAIN, VAL, TEST) must sum to 1.0, got {TOTAL_RATIO}")
 
 # Random seed for data splitting
 DATA_SPLIT_SEED = int(os.getenv('DATA_SPLIT_SEED', '42'))

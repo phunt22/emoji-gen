@@ -9,11 +9,10 @@ import logging
 import time
 from datetime import datetime
 
-from emoji_gen.data_utils import get_emoji_list, prune_emoji_list
-from emoji_gen.data_utils.dreambooth_preparation import (
-    download_emojis as dreambooth_download_emojis, 
-    verify_dreambooth_structure
-)
+from emoji_gen.data_utils.get_emoji_list import main as get_emoji_list
+from emoji_gen.data_utils.prune_emoji_list import main as prune_emoji_list
+from emoji_gen.data_utils.dreambooth_preparation import organize_emojis, verify_dreambooth_structure
+
 from emoji_gen.models.fine_tuning import EmojiFineTuner
 from emoji_gen.models.model_manager import model_manager
 from emoji_gen.server_client import is_server_running, set_model_remote
@@ -50,23 +49,15 @@ def prepare_and_split_data():
     
     logger.info(f"\n3️⃣ Downloading & organizing images from {EMOJI_DATA_PATH} into DreamBooth structure (dreambooth_download_emojis)...")
     print(f"\n3️⃣ Downloading and organizing emoji images (using config ratios)...")
-    # dreambooth_download_emojis now uses TRAIN_RATIO, VAL_RATIO, TEST_RATIO from config.py internally
-    dreambooth_download_emojis() 
-    
+
+    organize_emojis()        
     logger.info("\n4️⃣ Verifying DreamBooth data structure (verify_dreambooth_structure)...")
     print("\n4️⃣ Verifying DreamBooth data structure...")
-    # verify_dreambooth_structure also uses paths from config.py internally
+
     if verify_dreambooth_structure():
-        logger.info("✅ Data preparation and verification complete!")
-        print("\n✅ Data preparation and verification complete!")
-        print(f"   ➡️ Training images expected at: {TRAIN_DATA_PATH}")
-        print(f"   ➡️ Validation images expected at: {VAL_DATA_PATH}")
-        print(f"   ➡️ Test images (for evaluation) expected at: {TEST_DATA_PATH_IMAGES}")
-        print(f"   ➡️ Test metadata (for evaluation prompts) expected at: {TEST_METADATA_PATH}")
         print(f"\n🚀 Ready for fine-tuning: emoji-dev fine-tune")
     else:
-        logger.error("❌ Data preparation failed or structure is not as expected. Check logs above.")
-        print("❌ Data preparation failed or structure is not as expected. Please review the log output.")
+        print("❌ Data preparation failed or structure is not as expected.")
 
 def handle_finetune(args):
     """Handle fine-tuning with the enhanced DreamBooth implementation."""
