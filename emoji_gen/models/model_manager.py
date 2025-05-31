@@ -33,7 +33,7 @@ class ModelManager:
                 import gc
                 gc.collect()
 
-                if torch.cuda.is_available:
+                if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()
                     torch.cuda.empty_cache() ## empty again bc why not
@@ -139,7 +139,7 @@ class ModelManager:
             else:
                 local_path = FINE_TUNED_MODELS_DIR / model_name
                 if not local_path.exists():
-                    return False, f"Model '{model_name}' not found in {FINE_TUNED_MODELS_DIR}"
+                    return False, f"Model {model_name} not found!"
                 
                 is_lora, weights_path, base_model = self._find_lora_weights_in_directory(local_path)
 

@@ -268,7 +268,7 @@ def handle_sync(args):
             f'{user_at_instance}:~/emoji-gen/generated_emojis/*',
             str(local_sync_dir_path)
         ]
-        subprocess.run(scp_cmd, check=True, capture_output=True, text=True)
+        subprocess.run(scp_cmd, check=True) ## check=True is what gives the per line command output
         print("✅ Sync complete!")
     except subprocess.CalledProcessError as e:
         print(f"❌ Error syncing images. Return code: {e.returncode}")
