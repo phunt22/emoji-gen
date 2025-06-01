@@ -60,7 +60,6 @@ def prepare_and_split_data():
         print("❌ Data preparation failed or structure is not as expected.")
 
 def handle_finetune(args):
-    """Handle fine-tuning with the enhanced DreamBooth implementation."""
     try:
         model_id_to_finetune = get_model_path(args.model)
         fine_tuner = EmojiFineTuner(base_model_id=model_id_to_finetune)
@@ -150,7 +149,7 @@ def handle_finetune(args):
         print(f"📊 Trained Model Type: {fine_tuner.model_type.upper()}")
         print(f"\n💡 To use your fine-tuned model (example):")
         print(f"   emoji-dev set-model {Path(final_model_output_path).name}")
-        print(f"   emoji-gen '{args.validation_prompt if args.validation_prompt else 'an sks emoji'}'")
+        print(f"   emoji-gen '{args.validation_prompt if args.validation_prompt else 'sks emoji'}'")
     except Exception as e:
         logger.error(f"Error during fine-tuning: {str(e)}", exc_info=True)
 

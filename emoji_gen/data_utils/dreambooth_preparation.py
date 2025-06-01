@@ -15,6 +15,7 @@ from emoji_gen.config import (
     VAL_DATA_PATH,      
     TEST_DATA_PATH_IMAGES, 
     TEST_METADATA_PATH,
+    MAX_CLASS_IMAGES
 )
 
 logger = logging.getLogger(__name__)
@@ -82,8 +83,10 @@ def organize_emojis():
             "Not enough emojis in the folder"
         )
     
-    class_count = len(emoji_data_with_images) - INSTANCE_COUNT - TEST_COUNT
+    # set an upper limit on the class count, from config.py
+    class_count = min(max(len(emoji_data_with_images) - INSTANCE_COUNT - TEST_COUNT, 0), MAX_CLASS_IMAGES)
     total_needed = class_count + INSTANCE_COUNT + TEST_COUNT
+
     random.seed(DATA_SPLIT_SEED)
     random.shuffle(emoji_data_with_images)
     needed_data = emoji_data_with_images[:total_needed]

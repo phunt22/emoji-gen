@@ -47,6 +47,7 @@ EMOJI_DATA_PATH = str(DATA_DIR / "emojisPruned.json") # Master pruned list used 
 
 TEST_COUNT = 50
 INSTANCE_COUNT = 50
+MAX_CLASS_IMAGES = 200
 
 # TOTAL_RATIO = TRAIN_RATIO + VAL_RATIO + TEST_RATIO
 # if not (0.999 <= TOTAL_RATIO <= 1.001):
