@@ -31,9 +31,9 @@ DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "generated_emojis"
 
 DATA_DIR = PROJECT_ROOT / "data"
 DREAMBOOTH_DATA_DIR = DATA_DIR / "dreambooth"
-TRAIN_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "class_images")  # Directory with training images
-VAL_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "instance_images")  # Directory with validation images
-TEST_DATA_PATH_IMAGES = str(DREAMBOOTH_DATA_DIR / "test_images") # For evaluation images
+TRAIN_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "class_images")  
+VAL_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "instance_images")  
+TEST_DATA_PATH_IMAGES = str(DREAMBOOTH_DATA_DIR / "test_images")
 TEST_METADATA_PATH = str(Path(TEST_DATA_PATH_IMAGES) / "test_metadata.json") # For evaluation prompts/metadata
 
 

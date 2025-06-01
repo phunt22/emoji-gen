@@ -99,12 +99,19 @@ class EmojiFineTuner:
                               **kwargs) -> List[str]:
         """Build the training command based on model type and parameters"""
 
+        from emoji_gen.config import (
+            VAL_DATA_PATH, ## instance
+            TRAIN_DATA_PATH ## class
+        )
+
         script_path = self._get_training_script_path()
 
         cmd = [
             "accelerate", "launch", str(script_path),
             "--pretrained_model_name_or_path", self.base_model_id,
-            "--instance_data_dir", str(instance_data_dir),
+            "--instance_data_dir", VAL_DATA_PATH,
+            "--class_data_dir", TRAIN_DATA_PATH,
+            "--class_prompt", "emoji",
             "--output_dir", str(output_dir),
             "--mixed_precision", kwargs.get("mixed_precision", "fp16"),
             "--train_batch_size", str(kwargs.get('batch_size', 1)),
@@ -124,35 +131,40 @@ class EmojiFineTuner:
         instance_prompt = kwargs.get('instance_prompt', 'sks emoji')
         cmd.extend(["--instance_prompt", instance_prompt])
         
-        class_prompt = kwargs.get('class_prompt') # Default is None if not provided
-        if class_prompt:
-            cmd.extend(["--class_prompt", class_prompt])
-            # If using class_prompt, diffusers scripts usually require prior preservation.
-            cmd.extend(["--with_prior_preservation", "--prior_loss_weight=1.0"]) 
-            class_data_dir = kwargs.get('class_data_dir')
-            if class_data_dir:
-                 cmd.extend(["--class_data_dir", str(class_data_dir)])
-            else:
-                self.logger.warning("class_prompt is provided, but class_data_dir is not. Prior preservation might not work as expected without class images.")
+        # class_prompt = kwargs.get('class_prompt') # Default is None if not provided
+        # if class_prompt:
+        #     cmd.extend(["--class_prompt", class_prompt])
+        #     # If using class_prompt, diffusers scripts usually require prior preservation.
+        #     cmd.extend(["--with_prior_preservation", "--prior_loss_weight=1.0"]) 
+        #     class_data_dir = kwargs.get('class_data_dir')
+        #     if class_data_dir:
+        #          cmd.extend(["--class_data_dir", str(class_data_dir)])
+        #     else:
+        #         self.logger.warning("class_prompt is provided, but class_data_dir is not. Prior preservation might not work as expected without class images.")
 
-        validation_prompt = kwargs.get('validation_prompt')
-        if validation_prompt: # Only add validation flags if a prompt is given
-            cmd.extend(["--validation_prompt", validation_prompt])
-            # Check if validation_data_dir (for image folder) is provided
-            if validation_data_dir and validation_data_dir.exists() and any(validation_data_dir.iterdir()):
-                cmd.extend(["--validation_data_dir", str(validation_data_dir)])
-                self.logger.info(f"Using validation image directory: {validation_data_dir}")
+
+        # NOTE:
+        # Validation temporarily removed, since we arent actually making descisions based off of it.
+        # Using the validation set for instance 
+
+        # validation_prompt = kwargs.get('validation_prompt')
+        # if validation_prompt: # Only add validation flags if a prompt is given
+        #     cmd.extend(["--validation_prompt", validation_prompt])
+        #     # Check if validation_data_dir (for image folder) is provided
+        #     if validation_data_dir and validation_data_dir.exists() and any(validation_data_dir.iterdir()):
+        #         cmd.extend(["--validation_data_dir", str(validation_data_dir)])
+        #         self.logger.info(f"Using validation image directory: {validation_data_dir}")
             
-            # validation_epochs is a common arg, but some scripts might use validation_steps
-            validation_epochs = kwargs.get('validation_epochs')
-            if validation_epochs is not None:
-                 cmd.extend(["--validation_epochs", str(validation_epochs)])
-            else:
-                # Alternative: use validation_steps if your script prefers that
-                validation_steps = kwargs.get('validation_steps')
-                if validation_steps is not None:
-                    cmd.extend(["--num_validation_images", str(kwargs.get('num_validation_images', 4))]) # Often paired with validation_steps
-                    cmd.extend(["--validation_steps", str(validation_steps)])
+        #     # validation_epochs is a common arg, but some scripts might use validation_steps
+        #     validation_epochs = kwargs.get('validation_epochs')
+        #     if validation_epochs is not None:
+        #          cmd.extend(["--validation_epochs", str(validation_epochs)])
+        #     else:
+        #         # Alternative: use validation_steps if your script prefers that
+        #         validation_steps = kwargs.get('validation_steps')
+        #         if validation_steps is not None:
+        #             cmd.extend(["--num_validation_images", str(kwargs.get('num_validation_images', 4))]) # Often paired with validation_steps
+        #             cmd.extend(["--validation_steps", str(validation_steps)])
 
         if self.model_type == "sdxl":
             vae_path = kwargs.get('vae_path', 'madebyollin/sdxl-vae-fp16-fix')
