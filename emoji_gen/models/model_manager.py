@@ -57,7 +57,7 @@ class ModelManager:
         
         # check direct directory first
         for lora_file in possible_lora_files:
-            if (model_dir / lora_file).exists():
+            if (model_dir / "checkpoint-500" / lora_file).exists():
                 # try to read base model from metadata.json
                 base_model = self._read_base_model_from_metadata(model_dir)
                 return True, model_dir, base_model
@@ -104,23 +104,36 @@ class ModelManager:
 
             self.cleanup()
             
-            # base model from config
             if model_name in MODEL_ID_MAP:
                 model_path = MODEL_ID_MAP[model_name]
 
-                if "xl" in model_name: 
+                if model_name == "sd3-ipadapter": ## RAD MODEL
+                    # this is from docs
+                    self.active_model = DiffusionPipeline.from_pretrained(
+                        model_path,
+                        torch_dtype=self._dtype, ## potentially bfloat16
+                        # use_safetensors=True ##  maybe???
+                    ).to(self._device)
+                elif "xl" in model_name: 
                     self.active_model = StableDiffusionXLPipeline.from_pretrained(
                         model_path,
                         torch_dtype=self._dtype,
                         use_safetensors=True, 
                         variant="fp16" if self._device == "cuda" else None ## ensure we are on GPU
                     ).to(self._device)
-                else: ## sd3
+                elif "sd3" in model_name: # base sd3, not the ip-adapter one
                     self.active_model = StableDiffusion3Pipeline.from_pretrained(
                         model_path,
                         torch_dtype=self._dtype,
                         use_safetensors=True, 
-                        variant=None
+                        # variant=None # SD3 typically doesn't use variants like XL fp16
+                    ).to(self._device)
+                else: 
+                    ## fallback to other models. Shouldnt happen since fine tuned models are hanlded in else branch
+                    print(f"Warning: Loading model '{model_path}' with generic DiffusionPipeline.from_pretrained. Ensure this is appropriate.")
+                    self.active_model = DiffusionPipeline.from_pretrained(
+                        model_path,
+                        torch_dtype=self._dtype
                     ).to(self._device)
 
                 self._model_id = model_name

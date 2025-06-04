@@ -15,7 +15,8 @@ DTYPE = torch.float32
 # Model defaults
 DEFAULT_MODEL = 'sd3'
 MODEL_ID_MAP = {
-    "sd3": "stabilityai/stable-diffusion-3-medium-diffusers",
+    "sd3": "stabilityai/stable-diffusion-3.5-large",
+    "sd3-ipadapter": "InstantX/SD3.5-Large-IP-Adapter", ## RAG MODEL
     "SD-XL": "stabilityai/stable-diffusion-xl-base-1.0",    
 
     # quality of life :)
@@ -34,28 +35,23 @@ DREAMBOOTH_DATA_DIR = DATA_DIR / "dreambooth"
 TRAIN_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "class_images")  
 VAL_DATA_PATH = str(DREAMBOOTH_DATA_DIR / "instance_images")  
 TEST_DATA_PATH_IMAGES = str(DREAMBOOTH_DATA_DIR / "test_images")
-TEST_METADATA_PATH = str(Path(TEST_DATA_PATH_IMAGES) / "test_metadata.json") # For evaluation prompts/metadata
+RAG_DATA_PATH = DATA_DIR / "rag_images"
+TEST_METADATA_PATH = str(Path(TEST_DATA_PATH_IMAGES) / "test_metadata.json") 
 
 
-EMOJI_DATA_PATH = str(DATA_DIR / "emojisPruned.json") # Master pruned list used by dreambooth_preparation
+EMOJI_DATA_PATH = str(DATA_DIR / "emojisPruned.json") 
 
-# # Fine-tuning data split ratios, etc. (Primarily for the old JSON split method)
-# # These ratios are less relevant if the primary path is direct image folders.
-# TRAIN_RATIO = 0.8 # Adjusted to match dreambooth_preparation internal split
-# VAL_RATIO = 0.1   # Adjusted
-# TEST_RATIO = 0.1    # No test set for DreamBooth in the new setup
 
 TEST_COUNT = 50
 INSTANCE_COUNT = 50
 MAX_CLASS_IMAGES = 200
 
-# TOTAL_RATIO = TRAIN_RATIO + VAL_RATIO + TEST_RATIO
-# if not (0.999 <= TOTAL_RATIO <= 1.001):
-#     raise ValueError(f"Configured split ratios (TRAIN, VAL, TEST) must sum to 1.0, got {TOTAL_RATIO}")
 
 # Random seed for data splitting
 DATA_SPLIT_SEED = int(os.getenv('DATA_SPLIT_SEED', '42'))
 MODELS_DIR = PROJECT_ROOT / "models"
+
+LLM_SYSTEM_PROMPT = "Make this better"
 
 # helper methods
 def get_model_path(model_name: str) -> str:

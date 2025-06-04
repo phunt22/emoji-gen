@@ -8,6 +8,12 @@ from typing import Dict, Any, Optional, List
 import logging
 from datetime import datetime
 
+from emoji_gen.config import (
+    DATA_DIR
+)
+
+EMOJI_DATA = Path(DATA_DIR / "emoji")
+
 class EmojiFineTuner:
     
     def __init__(self, base_model_id: str):
@@ -98,24 +104,31 @@ class EmojiFineTuner:
             "accelerate", "launch", str(script_path),
             "--pretrained_model_name_or_path", self.base_model_id,
              "--output_dir", str(output_dir),
-
             # instance and class data
             # train and val are slight misnomers but its okay :)
-            "--instance_data_dir", VAL_DATA_PATH,
-            "--instance_prompt", str(kwargs.get('instance_prompt', 'sks_emoji')),
-            "--class_data_dir", TRAIN_DATA_PATH,
-            "--class_prompt", "emoji",
+            # "--instance_data_dir", VAL_DATA_PATH,
+            # "--instance_prompt", str(kwargs.get('instance_prompt', 'sks emoji')),
+            # "--class_data_dir", TRAIN_DATA_PATH,
+            # "--class_prompt", "emoji",
+
+            "--dataset_name", str(EMOJI_DATA),
+            "--caption_column", "text",
+            "--image_column", "file_name",
+            "--instance_prompt", "an sks emoji"
+
+
 
             # training parameters
             "--mixed_precision", kwargs.get("mixed_precision", "fp16"),
             "--train_batch_size", str(kwargs.get('batch_size', 1)),
             "--gradient_accumulation_steps", str(kwargs.get('gradient_accumulation_steps', 4)),
             "--learning_rate", str(kwargs.get('learning_rate', 1e-4)),
-            "--lr_scheduler", kwargs.get("lr_scheduler", "constant"),
+            "--lr_scheduler", kwargs.get("lr_scheduler", "cosine"),
             "--lr_warmup_steps", str(kwargs.get("lr_warmup_steps", "0")),
 
             # should be ~5k steps for SDXL and ~4k for SD3
-            "--max_train_steps", str(kwargs.get('max_train_steps', 4000)),
+            "--max_train_steps", str(kwargs.get('max_train_steps', 6000)), ## can always rollback to checkpoint
+            # checkpoint is every 500 by default
             "--seed", str(kwargs.get('seed', 42)),
         ]
 

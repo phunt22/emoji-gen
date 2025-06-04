@@ -12,6 +12,7 @@ from datetime import datetime
 from emoji_gen.data_utils.get_emoji_list import main as get_emoji_list
 from emoji_gen.data_utils.prune_emoji_list import main as prune_emoji_list
 from emoji_gen.data_utils.dreambooth_preparation import organize_emojis, verify_dreambooth_structure
+from emoji_gen.utils.cache_rag_embeddings import compute_and_cache_rag_embeddings
 
 from emoji_gen.models.fine_tuning import EmojiFineTuner
 from emoji_gen.models.model_manager import model_manager
@@ -27,6 +28,9 @@ from emoji_gen.config import (
     get_model_path,
     FINE_TUNED_MODELS_DIR
 )
+from emoji_gen.utils.aux_models import get_clip_pipeline
+from PIL import Image
+import torch
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -47,12 +51,16 @@ def prepare_and_split_data():
     print("\n2️⃣ Pruning emoji list...")
     prune_emoji_list()
     
-    logger.info(f"\n3️⃣ Downloading & organizing images from {EMOJI_DATA_PATH} into DreamBooth structure (dreambooth_download_emojis)...")
-    print(f"\n3️⃣ Downloading and organizing emoji images (using config ratios)...")
+    logger.info("\n3️⃣ Computing and caching RAG caption embeddings...")
+    print("\n3️⃣ Computing and caching RAG caption embeddings...")
+    compute_and_cache_rag_embeddings()
+    
+    logger.info(f"\n4️⃣ Downloading & organizing images from {EMOJI_DATA_PATH} into DreamBooth structure (dreambooth_download_emojis)...")
+    print(f"\n4️⃣ Downloading and organizing emoji images (using config ratios)...")
 
     organize_emojis()        
-    logger.info("\n4️⃣ Verifying DreamBooth data structure (verify_dreambooth_structure)...")
-    print("\n4️⃣ Verifying DreamBooth data structure...")
+    logger.info("\n5️⃣ Verifying DreamBooth data structure (verify_dreambooth_structure)...")
+    print("\n5️⃣ Verifying DreamBooth data structure...")
 
     if verify_dreambooth_structure():
         print(f"\n🚀 Ready for fine-tuning: emoji-dev fine-tune")
@@ -215,6 +223,209 @@ def handle_server_status(args):
         print("❌ Server is not running")
         print("💡 Start with: emoji-dev start-server")
 
+
+
+def handle_test(args):
+    use_rag = args.use_rag or False
+    use_llm = args.use_llm or False
+    num_prompts_to_test = args.num
+    output_dir_name_arg = args.name
+    custom_prompt_file = args.prompt_file
+    num_inference_steps = args.num_steps
+    guidance_scale = args.guidance
+
+    model_identifier = args.model
+
+    logger.info(f"Starting test run for model: {model_identifier}")
+    logger.info(f"Using RAG: {use_rag}, Using LLM: {use_llm}")
+    logger.info(f"Inference steps: {num_inference_steps}, Guidance scale: {guidance_scale}")
+    logger.info(f"Targeting {num_prompts_to_test} unique prompts, 1 image per prompt.")
+
+    # attempt to load CLIP model
+    clip_model, clip_processor = None, None
+    try:
+        clip_model, clip_processor = get_clip_pipeline()
+        if clip_model and clip_processor:
+            logger.info("CLIP model loaded successfully for score calculation.")
+        else:
+            logger.warning("CLIP model or processor not available. CLIP scores will not be calculated.")
+    except Exception as e:
+        logger.error(f"Failed to load CLIP model for scoring: {e}", exc_info=True)
+        clip_model, clip_processor = None, None # Ensure they are None
+
+    selected_prompts = []
+    prompt_source_info = "unknown"
+    random.seed(42) 
+
+    # LOADING PROMPTS
+    # if custom file, load it
+    if custom_prompt_file:
+        try:
+            prompt_file_path = Path(custom_prompt_file)
+            if prompt_file_path.is_file():
+                with open(prompt_file_path, 'r') as f:
+                    available_prompts = [line.strip() for line in f if line.strip()]
+                if available_prompts:
+                    if len(available_prompts) <= num_prompts_to_test:
+                        selected_prompts = available_prompts
+                        random.shuffle(selected_prompts)
+                    else:
+                        selected_prompts = random.sample(available_prompts, num_prompts_to_test)
+                    logger.info(f"Selected {len(selected_prompts)} prompts from custom file: {custom_prompt_file}")
+                    prompt_source_info = f"custom_file:{custom_prompt_file} (selected={len(selected_prompts)}/{len(available_prompts)})"
+                else:
+                    logger.warning(f"Custom prompt file {custom_prompt_file} was empty. Falling back.")
+            else:
+                logger.warning(f"Custom prompt file {custom_prompt_file} not found. Falling back.")
+        except Exception as e:
+            logger.error(f"Error reading custom prompt file {custom_prompt_file}: {e}. Falling back.", exc_info=True)
+    
+    # if metadata file, load it
+    if not selected_prompts and TEST_METADATA_PATH and Path(TEST_METADATA_PATH).exists():
+        try:
+            with open(TEST_METADATA_PATH, 'r') as f:
+                all_metadata_prompts = [item.get("processed") for item in json.load(f) if item.get("processed")]
+            
+            if all_metadata_prompts:
+                if len(all_metadata_prompts) <= num_prompts_to_test:
+                    selected_prompts = all_metadata_prompts
+                    random.shuffle(selected_prompts) # Shuffle for consistent order
+                    logger.info(f"Selected all {len(selected_prompts)} available prompts from {TEST_METADATA_PATH} (shuffled with seed 42).")
+                else:
+                    selected_prompts = random.sample(all_metadata_prompts, num_prompts_to_test)
+                    logger.info(f"Randomly sampled {len(selected_prompts)} prompts from {TEST_METADATA_PATH} (seed 42).")
+                prompt_source_info = f"metadata:{TEST_METADATA_PATH} (selected={len(selected_prompts)}/{len(all_metadata_prompts)}, target_sample_size={num_prompts_to_test})"
+            else:
+                logger.warning(f"No valid prompts found in {TEST_METADATA_PATH}. Falling back.")
+        except Exception as e:
+            logger.error(f"Error loading or sampling prompts from {TEST_METADATA_PATH}: {e}. Falling back.", exc_info=True)
+
+    if not selected_prompts:
+        logger.error("CRITICAL: No prompts to test with. Check logs.")
+        print("❌ CRITICAL: No prompts to test with. Check logs.")
+        return
+    
+    # RUN INFERENCE
+    # now actual inference on testing
+    test_run_results = []
+    
+    if output_dir_name_arg:
+        safe_output_dir_name = "".join(c if c.isalnum() else "_" for c in output_dir_name_arg)[:50].strip("_")
+        if not safe_output_dir_name: safe_output_dir_name = "test_run"
+    else:
+        safe_output_dir_name = "test_run"
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_test_output_dir = Path(TEST_DATA_PATH_IMAGES or "generated_tests")
+    model_id_str = str(model_identifier).replace('/','_') if model_identifier else "unknown_model"
+    current_test_run_dir = base_test_output_dir / f"{safe_output_dir_name}_{model_id_str}_{timestamp}"
+    current_test_run_dir.mkdir(parents=True, exist_ok=True)
+    
+    logger.info(f"Test outputs will be saved to: {current_test_run_dir}")
+    logger.info(f"Actually processing {len(selected_prompts)} unique prompts.")
+
+    from emoji_gen.generation import generate_emoji
+
+    overall_start_time = time.time()
+
+    for i, prompt_text in enumerate(selected_prompts):
+        logger.info(f"Processing prompt {i+1}/{len(selected_prompts)}: '{prompt_text}'")
+        
+        gen_start_time = time.time()
+        generation_result = generate_emoji(
+            prompt=prompt_text,
+            output_path=str(current_test_run_dir),
+            use_rag=use_rag,
+            use_llm=use_llm,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale
+        )
+        gen_end_time = time.time()
+        duration_seconds = round(gen_end_time - gen_start_time, 2)
+        
+        generated_output_details = {
+            "image_path": None,
+            "duration_seconds": duration_seconds,
+            "status": "error",
+            "clip_score": None
+        }
+
+        if generation_result["status"] == "success":
+            image_path_str = generation_result["image_path"]
+            generated_output_details.update({
+                "image_path": image_path_str,
+                "status": "success",
+            })
+            logger.info(f"Successfully generated image: {image_path_str} in {duration_seconds}s")
+            print(f"  🖼️ Image for '{prompt_text}' saved to: {image_path_str} (took {duration_seconds}s)")
+
+            # CLIP Score if available
+            if clip_model and clip_processor and image_path_str:
+                try:
+                    image = Image.open(image_path_str).convert("RGB")
+                    inputs = clip_processor(text=[prompt_text], images=[image], return_tensors="pt", padding=True, truncation=True)
+                    
+                    # move inputs to the CLIP model's device
+                    inputs = {k: v.to(clip_model.device) for k, v in inputs.items()}
+
+                    with torch.no_grad():
+                        outputs = clip_model(**inputs)
+                    
+                    text_features = clip_model.get_text_features(**inputs)
+                    image_features = clip_model.get_image_features(**inputs)
+                    
+                    text_features_norm = text_features / text_features.norm(p=2, dim=-1, keepdim=True)
+                    image_features_norm = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
+                    
+                    similarity = (text_features_norm @ image_features_norm.T).item()
+                    # [-1, 1]
+
+                    score = round(similarity, 4) 
+
+                    generated_output_details["clip_score"] = score
+                    logger.info(f"Calculated CLIP score for '{prompt_text}': {score}")
+                    print(f"    📊 CLIP Score: {score}")
+                except Exception as e_clip:
+                    logger.error(f"Error calculating CLIP score for {image_path_str}: {e_clip}", exc_info=True)
+                    generated_output_details["clip_score"] = "error_calculating"
+        else:
+            error_msg = generation_result.get("error", "Unknown error during generation")
+            generated_output_details["error_message"] = error_msg
+            logger.error(f"Failed to generate image for prompt '{prompt_text}' in {duration_seconds}s: {error_msg}")
+        
+        test_run_results.append({
+            "prompt_index": i,
+            "original_prompt": prompt_text,
+            "generated_output": generated_output_details, 
+            "llm_augmentation_used": use_llm,
+            "rag_used": use_rag
+        })
+
+    overall_end_time = time.time()
+    total_run_duration_seconds = round(overall_end_time - overall_start_time, 2)
+
+    summary_file_path = current_test_run_dir / "test_summary.json"
+    with open(summary_file_path, 'w') as f:
+        json.dump({
+            "test_run_parameters": {
+                "model_tested": model_identifier,
+                "use_rag": use_rag,
+                "use_llm": use_llm,
+                "num_prompts_requested_arg": num_prompts_to_test, # This is args.num
+                "actual_prompts_processed_count": len(selected_prompts),
+                "images_per_prompt_generated": 1, # Fixed to 1
+                "output_directory_name_arg": output_dir_name_arg,
+                "actual_output_directory": str(current_test_run_dir),
+                "prompt_source": prompt_source_info
+            },
+            "overall_test_duration_seconds": total_run_duration_seconds,
+            "results_per_prompt": test_run_results 
+        }, f, indent=2)
+    
+    logger.info(f"Test run complete. Total duration: {total_run_duration_seconds}s. Summary saved to: {summary_file_path}")
+    print(f"\n✅ Test run finished! Total time: {total_run_duration_seconds}s")
+    print(f"📂 All outputs and summary saved in: {current_test_run_dir}")
+
 def handle_sync(args):
     vm_host = os.getenv('GCP_VM_EXTERNAL_IP')
     if not vm_host: print("❌ Error: GCP_VM_EXTERNAL_IP environment variable not set."); return
@@ -289,6 +500,19 @@ def main():
     status_parser = subparsers.add_parser("server-status", help="Check server status")
     sync_parser = subparsers.add_parser("sync", help="Sync generated images from VM")
     
+    # Test command parser
+    test_parser = subparsers.add_parser('test', help='Run a test generation suite')
+    # TODO add prompt file path default
+    test_parser.add_argument('--model', type=str, required=True, help='Model name or path to test (must be in ModelManager or a local path)')
+    test_parser.add_argument('--name', type=str, help='Optional name for the test run directory (i.e. "awesome_rag_experiment")')
+    test_parser.add_argument('--num', type=int, default=1, help='Number of unique prompts to test (randomly sampled with seed).')
+    test_parser.add_argument('--prompt-file', type=str, help='Optional path to a .txt file containing prompts (one per line). Overrides default prompt loading.')
+    # inference params
+    test_parser.add_argument('--use-rag', action='store_true', help='Enable Retrieval Augmented Generation (RAG) using IP-Adapter')
+    test_parser.add_argument('--use-llm', action='store_true', help='Enable LLM prompt augmentation')
+    test_parser.add_argument('--num-steps', type=int, default=25, help='Number of inference steps to take (default: %(default)s)')
+    test_parser.add_argument('--guidance', type=float, default=7.5, help='Guidance scale (default: %(default)s)')
+
     args = parser.parse_args()
     
     if args.command == 'list-models': handle_list_models()
@@ -299,6 +523,7 @@ def main():
     elif args.command == 'start-server': handle_server(args)
     elif args.command == 'server-status': handle_server_status(args)
     elif args.command == 'sync': handle_sync(args)
+    elif args.command == 'test': handle_test(args)
 
 if __name__ == '__main__':
     main() 

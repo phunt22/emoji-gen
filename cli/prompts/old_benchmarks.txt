@@ -1,13 +1,13 @@
-sks happy face with sunglasses emoji
-sks sad face with tears emoji
-sks angry face with steam emoji
-sks cat face with heart eyes emoji
-sks dog face with tongue out emoji
-sks surprised face with stars emoji
-sks laughing face with tears emoji
-sks thinking face with question mark emoji
-sks cool face with thumbs up emoji
-sks sleepy face with zzz emoji 
+sks emoji of happy face with sunglasses
+sks emoji of sad face with tears
+sks emoji of angry face with steam
+sks emoji of cat face with heart eyes
+sks emoji of dog face with tongue out
+sks emoji of surprised face with stars
+sks emoji of laughing face with tears
+sks emoji of thinking face with question mark
+sks emoji of cool face with thumbs up
+sks emoji of sleepy face with zzz
 
 
 
