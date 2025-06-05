@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--benchmark", action="store_true", help="Run in benchmark mode")  # Changed to boolean flag
     parser.add_argument("--model", type=str, default="sd-v1.5", help="Model to use for generation")
     parser.add_argument("--name", type=str, help="Name of the output folder for the benchmark")
-    
+    parser.add_argument("--rag", action="store_true", help="Use RAG for generation")
     args = parser.parse_args()
 
     if args.benchmark:
@@ -39,6 +39,7 @@ def main():
         result = generate_emoji_remote(
             prompt=prompt,
             num_inference_steps=args.steps,
+            use_rag=args.rag,
             guidance_scale=args.guidance,
             output_path=args.output
         )

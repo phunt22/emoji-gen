@@ -56,11 +56,22 @@ class ModelManager:
         ]
         
         # check direct directory first
-        for lora_file in possible_lora_files:
-            if (model_dir / "checkpoint-500" / lora_file).exists():
-                # try to read base model from metadata.json
-                base_model = self._read_base_model_from_metadata(model_dir)
-                return True, model_dir, base_model
+        latest_checkpoint = None
+        all_checkpoints = sorted([d for d in model_dir.glob("checkpoint-*") if d.is_dir()], key=lambda p: int(p.name.split("-")[-1]))
+
+        for ckpt_dir in reversed(all_checkpoints):  ## start from latest checkpoint
+            for lora_file in possible_lora_files:
+                if (ckpt_dir / lora_file).exists():
+                    base_model = self._read_base_model_from_metadata(ckpt_dir)
+                    return True, ckpt_dir, base_model
+                
+
+        # i feel like an idiot having wrote that code
+        # for lora_file in possible_lora_files:
+        #     if (model_dir / "checkpoint-500" / lora_file).exists():
+        #         # try to read base model from metadata.json
+        #         base_model = self._read_base_model_from_metadata(model_dir)
+        #         return True, model_dir, base_model
         
         # check subdirectories (shouldnt happen, but did initially in testing)
         for subdir in model_dir.iterdir():
@@ -72,8 +83,7 @@ class ModelManager:
         
         return False, None, None
 
-    def _read_base_model_from_metadata(self, weights_dir: Path) -> Optional[str]:
-        
+    def _read_base_model_from_metadata(self, weights_dir: Path) -> Optional[str]:        
         metadata_path = weights_dir / "metadata.json"
         if metadata_path.exists():
             try:
@@ -150,15 +160,21 @@ class ModelManager:
             
             # fine tuned model
             else:
-                local_path = FINE_TUNED_MODELS_DIR / model_name
-                if not local_path.exists():
-                    return False, f"Model {model_name} not found!"
+                model_specific_dir = Path(FINE_TUNED_MODELS_DIR) / model_name
+
+                if not model_specific_dir.exists() or not model_specific_dir.is_dir():
+                    return False, f"Fine-tuned model directory for '{model_name}' not found at '{model_specific_dir}' or is not a directory."
                 
-                is_lora, weights_path, base_model = self._find_lora_weights_in_directory(local_path)
+                is_lora, weights_path, base_model = self._find_lora_weights_in_directory(model_specific_dir)
 
                 if is_lora:
                     if not base_model:
-                        return False, f"LoRA Model '{model_name}' found but base model wasn't"
+                        error_message = (
+                            f"LoRA Model '{model_name}' found (weights at '{weights_path}'), "
+                            f"but its base model could not be determined. Ensure 'metadata.json' "
+                            f"with a 'base_model' key exists in the directory: '{weights_path}'."
+                        )
+                        return False, error_message
 
                     print(f"Loading LoRA model '{model_name}' (base: {base_model})")
                     print(f"LoRA weights at: {weights_path}")

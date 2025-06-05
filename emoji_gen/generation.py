@@ -92,6 +92,7 @@ def augment_prompt_with_llm(original_prompt: str) -> str:
     # config or default
     system_prompt = LLM_SYSTEM_PROMPT or "Make this emoji prompt more descriptive for an image generation model, focusing on visual details: "
     input_text = system_prompt + original_prompt
+    logger.debug(f"LLM input_text: '{input_text}'")
 
     try:
         inputs = llm_tokenizer(input_text, return_tensors="pt", truncation=True, max_length=200).to(llm_model.device)
