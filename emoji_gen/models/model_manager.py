@@ -22,7 +22,6 @@ class ModelManager:
         self._dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         self._initialized = False
 
-
     def _infer_base_model_from_name(self, model_name: str) -> str:
         model_name_lower = model_name.lower()
         model_id = None
@@ -57,66 +56,75 @@ class ModelManager:
             self._model_id = None
             self._initialized = False
 
-    def _find_lora_weights_in_directory(self, model_dir: Path) -> Tuple[bool, Optional[Path], Optional[str]]:
-       
+    def _find_lora_weights_in_directory(self, model_dir: Path, specific_checkpoint: Optional[str] = None) -> Tuple[bool, Optional[Path], Optional[str]]:
         possible_lora_files = [
-            # main one
             "pytorch_lora_weights.safetensors",
-            # alternative, not needed yet
-            "adapter_model.safetensors",
+            # not needed I think?
+            "adapter_model.safetensors", 
             "adapter_model.bin"
         ]
 
         base_model = self._infer_base_model_from_name(model_dir.name)
         
-        # check direct directory first
-        all_checkpoints = sorted([d for d in model_dir.glob("checkpoint-*") if d.is_dir()], key=lambda p: int(p.name.split("-")[-1]))
+        # If specific checkpoint requested, check that first
+        if specific_checkpoint:
+            checkpoint_dir = model_dir / f"checkpoint-{specific_checkpoint}"
+            if checkpoint_dir.exists() and checkpoint_dir.is_dir():
+                for lora_file in possible_lora_files:
+                    if (checkpoint_dir / lora_file).exists():
+                        print(f"Found LoRA weights in requested checkpoint: {checkpoint_dir / lora_file}")
+                        return True, checkpoint_dir, base_model
+                print(f"Warning: Requested checkpoint-{specific_checkpoint} exists but no LoRA weights found")
+            else:
+                print(f"Warning: Requested checkpoint-{specific_checkpoint} not found, falling back to latest")
+        
+        # Check latest checkpoint first (existing behavior)
+        all_checkpoints = sorted([d for d in model_dir.glob("checkpoint-*") if d.is_dir()], 
+                                key=lambda p: int(p.name.split("-")[-1]))
 
         # check direct directory
         for ckpt_dir in reversed(all_checkpoints):  ## start from latest checkpoint
             for lora_file in possible_lora_files:
                 if (ckpt_dir / lora_file).exists():
+                    print(f"Found LoRA weights in checkpoint: {ckpt_dir / lora_file}")
                     return True, ckpt_dir, base_model
                 
         # check direct directory
         for lora_file in possible_lora_files:
             if (model_dir / lora_file).exists():
+                print(f"Found LoRA weights in main directory: {model_dir / lora_file}")
                 return True, model_dir, base_model
         
         # check subdirectories (shouldnt happen, but did initially in testing)
         for subdir in model_dir.iterdir():
-            if subdir.is_dir():
+            if subdir.is_dir() and not subdir.name.startswith('checkpoint-'):
                 for lora_file in possible_lora_files:
                     if (subdir / lora_file).exists():
+                        print(f"Found LoRA weights in subdirectory: {subdir / lora_file}")
                         return True, subdir, base_model
         
         return False, None, None
 
-    # def _read_base_model_from_metadata(self, weights_dir: Path) -> Optional[str]:        
-    #     metadata_path = weights_dir / "metadata.json"
-    #     if metadata_path.exists():
-    #         try:
-    #             with open(metadata_path, 'r') as f:
-    #                 metadata = json.load(f)
-    #                 return metadata.get('base_model')
-    #         except Exception as e:
-    #             print(f"Warning: Could not read metadata.json: {e}")
-    #     return None
-
-    # def _get_pipeline_class_from_model_id(self, model_id: str):
-    #     model_id_lower = model_id.lower()
-        
-    #     if "xl" in model_id_lower or "sdxl" in model_id_lower:
-    #         return StableDiffusionXLPipeline
-    #     elif "sd3" in model_id_lower or "stable-diffusion-3" in model_id_lower:
-    #         return StableDiffusion3Pipeline
-    #     else:
-    #     #    default to SDXL
-    #         print(f"Warning: Defaulting to StableDiffusionXLPipeline for model ID: {model_id}. If this is not an XL model, pipeline selection might be incorrect.")
-    #         return StableDiffusionXLPipeline
+    def _get_pipeline_class_for_base_model(self, base_model: str):
+        """
+        Get the appropriate pipeline class for a base model
+        """
+        if base_model == 'sd3':
+            return StableDiffusion3Pipeline
+        elif base_model in ['sd-xl', 'sdxl']:
+            return StableDiffusionXLPipeline
+        else:
+            print(f"Warning: Unknown base model '{base_model}', defaulting to StableDiffusionXLPipeline")
+            return StableDiffusionXLPipeline
 
     def initialize_model(self, model_name: str = DEFAULT_MODEL) -> Tuple[bool, str]:
         try:
+            specific_checkpoint = None
+            if ':checkpoint-' in model_name:
+                model_name, checkpoint_part = model_name.split(':checkpoint-', 1)
+                specific_checkpoint = checkpoint_part
+                print(f"Requested specific checkpoint: {specific_checkpoint}")
+            
             # return early if we already have the model
             if self._initialized and model_name == self._model_id:
                 return True, "Model already initialized"
@@ -134,7 +142,7 @@ class ModelManager:
                         torch_dtype=self._dtype, ## potentially bfloat16
                         # use_safetensors=True ##  maybe???
                     ).to(self._device)
-                elif "xl" in model_name: 
+                elif "xl" in model_name.lower(): 
                     print(f"Loading {model_name} pipeline")
                     self.active_model = StableDiffusionXLPipeline.from_pretrained(
                         model_path,
@@ -142,7 +150,7 @@ class ModelManager:
                         use_safetensors=True, 
                         variant="fp16" if self._device == "cuda" else None ## ensure we are on GPU
                     ).to(self._device)
-                elif "sd3" in model_name: # base sd3, not the ip-adapter one
+                elif "sd3" in model_name.lower(): # base sd3, not the ip-adapter one
                     print(f"Loading {model_name} pipeline")
                     self.active_model = StableDiffusion3Pipeline.from_pretrained(
                         model_path,
@@ -177,7 +185,7 @@ class ModelManager:
                 if not model_specific_dir.exists() or not model_specific_dir.is_dir():
                     return False, f"Fine-tuned model directory for '{model_name}' not found at '{model_specific_dir}' or is not a directory."
                 
-                is_lora, weights_path, base_model = self._find_lora_weights_in_directory(model_specific_dir)
+                is_lora, weights_path, base_model = self._find_lora_weights_in_directory(model_specific_dir, specific_checkpoint)
 
                 if is_lora:
                     if not base_model:
@@ -192,13 +200,16 @@ class ModelManager:
                     print(f"LoRA weights at: {weights_path}")
 
                     base_model_path = MODEL_ID_MAP.get(base_model, base_model)
+                    
+                    # Get appropriate pipeline class
+                    pipeline_class = self._get_pipeline_class_for_base_model(base_model)
 
-                    # from docs
-                    self.active_model = DiffusionPipeline.from_pretrained(
+                    # Load base model with appropriate pipeline
+                    self.active_model = pipeline_class.from_pretrained(
                         base_model_path,
                         torch_dtype=self._dtype,
                         use_safetensors=True, 
-                        variant="fp16" if self._device == "cuda" and "sdxl" in model_name else None # var
+                        variant="fp16" if self._device == "cuda" and base_model in ['sd-xl', 'sdxl'] else None
                     ).to(self._device)
                     self.active_model.load_lora_weights(str(weights_path))
                 
