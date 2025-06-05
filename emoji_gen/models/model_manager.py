@@ -62,7 +62,7 @@ class ModelManager:
         for ckpt_dir in reversed(all_checkpoints):  ## start from latest checkpoint
             for lora_file in possible_lora_files:
                 if (ckpt_dir / lora_file).exists():
-                    base_model = self._read_base_model_from_metadata(ckpt_dir)
+                    base_model = self._read_base_model_from_metadata(model_dir)
                     return True, ckpt_dir, base_model
                 
 
@@ -78,7 +78,7 @@ class ModelManager:
             if subdir.is_dir():
                 for lora_file in possible_lora_files:
                     if (subdir / lora_file).exists():
-                        base_model = self._read_base_model_from_metadata(subdir)
+                        base_model = self._read_base_model_from_metadata(model_dir)
                         return True, subdir, base_model
         
         return False, None, None
@@ -172,7 +172,7 @@ class ModelManager:
                         error_message = (
                             f"LoRA Model '{model_name}' found (weights at '{weights_path}'), "
                             f"but its base model could not be determined. Ensure 'metadata.json' "
-                            f"with a 'base_model' key exists in the directory: '{weights_path}'."
+                            f"with a 'base_model' key exists in the model's main directory: '{model_specific_dir}'."
                         )
                         return False, error_message
 
