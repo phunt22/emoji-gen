@@ -22,6 +22,13 @@ class ModelManager:
         self._dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         self._initialized = False
 
+
+    def _infer_base_model_from_name(self, model_name: str) -> str:
+        model_name_lower = model_name.lower()
+        if 'sd3' in model_name_lower or 'sd-3' in model_name_lower:
+            return 'sd3'
+        return 'sd-xl'
+
     def __del__(self):
         self.cleanup()
 
@@ -54,24 +61,24 @@ class ModelManager:
             "adapter_model.safetensors",
             "adapter_model.bin"
         ]
+
+        base_model = self._infer_base_model_from_name(model_dir.name)
         
         # check direct directory first
-        latest_checkpoint = None
         all_checkpoints = sorted([d for d in model_dir.glob("checkpoint-*") if d.is_dir()], key=lambda p: int(p.name.split("-")[-1]))
 
+        # check direct directory
         for ckpt_dir in reversed(all_checkpoints):  ## start from latest checkpoint
             for lora_file in possible_lora_files:
                 if (ckpt_dir / lora_file).exists():
                     base_model = self._read_base_model_from_metadata(model_dir)
                     return True, ckpt_dir, base_model
                 
-
-        # i feel like an idiot having wrote that code
-        # for lora_file in possible_lora_files:
-        #     if (model_dir / "checkpoint-500" / lora_file).exists():
-        #         # try to read base model from metadata.json
-        #         base_model = self._read_base_model_from_metadata(model_dir)
-        #         return True, model_dir, base_model
+        # check direct directory
+        for lora_file in possible_lora_files:
+            if (model_dir / lora_file).exists():
+                base_model = self._read_base_model_from_metadata(model_dir)
+                return True, model_dir, base_model
         
         # check subdirectories (shouldnt happen, but did initially in testing)
         for subdir in model_dir.iterdir():
@@ -117,14 +124,16 @@ class ModelManager:
             if model_name in MODEL_ID_MAP:
                 model_path = MODEL_ID_MAP[model_name]
 
-                if model_name == "sd3-ipadapter": ## RAD MODEL
+                if model_name == "sd3-ipadapter": ## RAG MODEL
                     # this is from docs
+                    print(f"Loading {model_name} pipeline")
                     self.active_model = DiffusionPipeline.from_pretrained(
                         model_path,
                         torch_dtype=self._dtype, ## potentially bfloat16
                         # use_safetensors=True ##  maybe???
                     ).to(self._device)
                 elif "xl" in model_name: 
+                    print(f"Loading {model_name} pipeline")
                     self.active_model = StableDiffusionXLPipeline.from_pretrained(
                         model_path,
                         torch_dtype=self._dtype,
@@ -132,6 +141,7 @@ class ModelManager:
                         variant="fp16" if self._device == "cuda" else None ## ensure we are on GPU
                     ).to(self._device)
                 elif "sd3" in model_name: # base sd3, not the ip-adapter one
+                    print(f"Loading {model_name} pipeline")
                     self.active_model = StableDiffusion3Pipeline.from_pretrained(
                         model_path,
                         torch_dtype=self._dtype,
