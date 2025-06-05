@@ -25,9 +25,14 @@ class ModelManager:
 
     def _infer_base_model_from_name(self, model_name: str) -> str:
         model_name_lower = model_name.lower()
+        model_id = None
+        
         if 'sd3' in model_name_lower or 'sd-3' in model_name_lower:
-            return 'sd3'
-        return 'sd-xl'
+            model_id =  'sd3'
+        else:
+            model_id =  'sd-xl'
+
+        return model_id
 
     def __del__(self):
         self.cleanup()
@@ -71,13 +76,13 @@ class ModelManager:
         for ckpt_dir in reversed(all_checkpoints):  ## start from latest checkpoint
             for lora_file in possible_lora_files:
                 if (ckpt_dir / lora_file).exists():
-                    base_model = self._read_base_model_from_metadata(model_dir)
+                    base_model = self._infer_base_model_from_name(model_dir)
                     return True, ckpt_dir, base_model
                 
         # check direct directory
         for lora_file in possible_lora_files:
             if (model_dir / lora_file).exists():
-                base_model = self._read_base_model_from_metadata(model_dir)
+                base_model = self._infer_base_model_from_name(model_dir)
                 return True, model_dir, base_model
         
         # check subdirectories (shouldnt happen, but did initially in testing)
@@ -85,21 +90,21 @@ class ModelManager:
             if subdir.is_dir():
                 for lora_file in possible_lora_files:
                     if (subdir / lora_file).exists():
-                        base_model = self._read_base_model_from_metadata(model_dir)
+                        base_model = self._infer_base_model_from_name(model_dir)
                         return True, subdir, base_model
         
         return False, None, None
 
-    def _read_base_model_from_metadata(self, weights_dir: Path) -> Optional[str]:        
-        metadata_path = weights_dir / "metadata.json"
-        if metadata_path.exists():
-            try:
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                    return metadata.get('base_model')
-            except Exception as e:
-                print(f"Warning: Could not read metadata.json: {e}")
-        return None
+    # def _read_base_model_from_metadata(self, weights_dir: Path) -> Optional[str]:        
+    #     metadata_path = weights_dir / "metadata.json"
+    #     if metadata_path.exists():
+    #         try:
+    #             with open(metadata_path, 'r') as f:
+    #                 metadata = json.load(f)
+    #                 return metadata.get('base_model')
+    #         except Exception as e:
+    #             print(f"Warning: Could not read metadata.json: {e}")
+    #     return None
 
     # def _get_pipeline_class_from_model_id(self, model_id: str):
     #     model_id_lower = model_id.lower()
