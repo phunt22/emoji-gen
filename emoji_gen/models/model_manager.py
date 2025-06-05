@@ -173,7 +173,8 @@ class ModelManager:
                     print(f"Loading {model_name} pipeline")
                     self.active_model = StableDiffusion3Pipeline.from_pretrained(
                         model_path,
-                        torch_dtype=self._dtype,
+                        # torch_dtype=self._dtype,
+                        torch_dtype="float16",
                         use_safetensors=True, 
                         # variant=None # SD3 typically doesn't use variants like XL fp16
                     ).to(self._device)
