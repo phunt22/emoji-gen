@@ -26,7 +26,7 @@ class ModelManager:
     def _infer_base_model_from_name(self, model_name: str) -> str:
         model_name_lower = model_name.lower()
         model_id = None
-        
+
         if 'sd3' in model_name_lower or 'sd-3' in model_name_lower:
             model_id =  'sd3'
         else:
@@ -76,13 +76,11 @@ class ModelManager:
         for ckpt_dir in reversed(all_checkpoints):  ## start from latest checkpoint
             for lora_file in possible_lora_files:
                 if (ckpt_dir / lora_file).exists():
-                    base_model = self._infer_base_model_from_name(model_dir)
                     return True, ckpt_dir, base_model
                 
         # check direct directory
         for lora_file in possible_lora_files:
             if (model_dir / lora_file).exists():
-                base_model = self._infer_base_model_from_name(model_dir)
                 return True, model_dir, base_model
         
         # check subdirectories (shouldnt happen, but did initially in testing)
@@ -90,7 +88,6 @@ class ModelManager:
             if subdir.is_dir():
                 for lora_file in possible_lora_files:
                     if (subdir / lora_file).exists():
-                        base_model = self._infer_base_model_from_name(model_dir)
                         return True, subdir, base_model
         
         return False, None, None
