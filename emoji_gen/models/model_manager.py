@@ -74,13 +74,32 @@ class ModelManager:
                     if (checkpoint_dir / lora_file).exists():
                         print(f"Found LoRA weights in requested checkpoint: {checkpoint_dir / lora_file}")
                         return True, checkpoint_dir, base_model
-                print(f"Warning: Requested checkpoint-{specific_checkpoint} exists but no LoRA weights found")
-            else:
-                print(f"Warning: Requested checkpoint-{specific_checkpoint} not found, falling back to latest")
+            
+            # check nested structure: model_dir/model_name/checkpoint-X/
+            for subdir in model_dir.iterdir():
+                if subdir.is_dir() and not subdir.name.startswith('checkpoint-'):
+                    nested_checkpoint_dir = subdir / f"checkpoint-{specific_checkpoint}"
+                    if nested_checkpoint_dir.exists() and nested_checkpoint_dir.is_dir():
+                        for lora_file in possible_lora_files:
+                            if (nested_checkpoint_dir / lora_file).exists():
+                                print(f"Found LoRA weights in requested nested checkpoint: {nested_checkpoint_dir / lora_file}")
+                                return True, nested_checkpoint_dir, base_model
+            
+            print(f"Warning: Requested checkpoint-{specific_checkpoint} not found, falling back to latest")
         
-        # Check latest checkpoint first (existing behavior)
-        all_checkpoints = sorted([d for d in model_dir.glob("checkpoint-*") if d.is_dir()], 
-                                key=lambda p: int(p.name.split("-")[-1]))
+        
+        all_checkpoints = []
+        
+        # direct checkpoints
+        all_checkpoints.extend([d for d in model_dir.glob("checkpoint-*") if d.is_dir()])
+        
+        # nested checkpoints
+        for subdir in model_dir.iterdir():
+            if subdir.is_dir() and not subdir.name.startswith('checkpoint-'):
+                all_checkpoints.extend([d for d in subdir.glob("checkpoint-*") if d.is_dir()])
+        
+        # sort by number
+        all_checkpoints = sorted(all_checkpoints, key=lambda p: int(p.name.split("-")[-1]))
 
         # check direct directory
         for ckpt_dir in reversed(all_checkpoints):  ## start from latest checkpoint
