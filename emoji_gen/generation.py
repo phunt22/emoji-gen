@@ -89,17 +89,23 @@ def augment_prompt_with_llm(original_prompt: str) -> str:
         logger.warning("LLM not available for prompt augmentation. Returning original prompt.")
         return original_prompt
 
-    # config or default
-    system_prompt = LLM_SYSTEM_PROMPT or "Make this emoji prompt more descriptive for an image generation model, focusing on visual details: "
-    input_text = system_prompt + original_prompt
-    logger.debug(f"LLM input_text: '{input_text}'")
+    # config
+    system_prompt = LLM_SYSTEM_PROMPT
+    
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": original_prompt}
+    ]
 
     try:
-        inputs = llm_tokenizer(input_text, return_tensors="pt", truncation=True, max_length=200).to(llm_model.device)
+        # Use the chat template to format the input correctly for the model
+        input_ids = llm_tokenizer.apply_chat_template(messages, return_tensors="pt", add_generation_prompt=True).to(llm_model.device)
 
         # 77 comes from the fact that model is fine tuned on max of 77 char
-        outputs = llm_model.generate(**inputs, max_length=77, num_beams=4, early_stopping=True)
-        augmented_prompt = llm_tokenizer.decode(outputs[0], skip_special_tokens=True)
+        outputs = llm_model.generate(input_ids, max_new_tokens=77, num_beams=4, early_stopping=True)
+        
+        # decode only newly generated tokens, not the input prompt
+        augmented_prompt = llm_tokenizer.decode(outputs[0][len(input_ids[0]):], skip_special_tokens=True)
         
         logger.info(f"Original prompt: '{original_prompt}', Augmented prompt: '{augmented_prompt}'")
         return augmented_prompt
@@ -171,7 +177,7 @@ def get_rag_ip_adapter_inputs(prompt: str) -> Tuple[Optional[Image.Image], Optio
         # rag_scale = (best_clip_score + 1) / 2 
         rag_scale = max(0.0, min(1.0, rag_scale)) ## need to be [0,1], sanity check
 
-        
+        rag_scale = 0.5
 
         return retrieved_image, rag_scale
 
@@ -209,35 +215,32 @@ def generate_emoji(
             "guidance_scale": guidance_scale
         }
 
-        if use_rag:
+        ## check if model is the sd3 ip adapter, not basically removing the use of the rag flag
+        pipeline_class_name = model_pipeline.__class__.__name__
+        is_sd3_ipadapter = "StableDiffusion3PipelineIPAdapter" in pipeline_class_name
+
+        if use_rag and is_sd3_ipadapter:
             logger.info("Retrieving RAG inputs for IP-Adapter...")
             rag_reference_image, rag_scale_value = get_rag_ip_adapter_inputs(final_prompt)
             
-            # active_pipeline_for_generation = model_pipeline
-
             if rag_reference_image and rag_scale_value is not None:
                 logger.info(f"Using RAG with retrieved image and calculated scale {rag_scale_value:.4f}")
-
-                pipeline_class_name = model_pipeline.__class__.__name__
-                current_model_identifier = getattr(model_manager, '_model_id', '').lower()
-
-                if "sd3-ipadapter" in current_model_identifier or "InstantX/SD3.5-Large-IP-Adapter" in getattr(model_pipeline, 'config_name', '').lower():
-                    logger.info("SD3 IP-Adapter model detected. Passing IP-Adapter parameters directly.")
-                    
-                    model_call_params["clip_image"] = rag_reference_image 
-                    model_call_params["ipadapter_scale"] = rag_scale_value 
-                
-                elif "StableDiffusionXLPipeline" in pipeline_class_name: # placeholder for SDXL
-                    logger.info(f"SDXL IP-Adapter RAG needed - (Not implemented). Passing without IP-Adapter")
-                    # TODO: Load SDXL IP-Adapter here
-                    
-                    pass
-                else:
-                    logger.error(f"RAG requested for {pipeline_class_name} or model ID {current_model_identifier} for direct IP-Adapter params. ")
+                model_call_params["clip_image"] = rag_reference_image 
+                model_call_params["ipadapter_scale"] = rag_scale_value
             else:
                 logger.warning("RAG requested but could not retrieve necessary inputs. Proceeding without RAG.")
-       
         
+        elif use_rag and not is_sd3_ipadapter:
+             logger.warning(f"RAG is only implemented for the custom SD3 IP-Adapter. The current model '{pipeline_class_name}' does not support it. Proceeding without RAG.")
+
+        # make sure that sks emoji is in the prompt for ft models
+        if "sks emoji" not in model_call_params["prompt"] and not is_sd3_ipadapter:
+             # Check if it's a fine-tuned model by checking if the model_id is a path
+             model_id = getattr(model_manager, '_model_id', '')
+             if model_id and Path(model_manager.get_available_models().get(model_id, {}).get('path', '')).is_dir():
+                  logger.info("Appending 'sks emoji' to prompt for fine-tuned model.")
+                  model_call_params["prompt"] = f"{model_call_params['prompt']} sks emoji"
+
         # make sure in inference/eval mode
         if hasattr(model_pipeline, "eval"):
             model_pipeline.eval()
