@@ -32,7 +32,8 @@ def set_model_remote(model_name, server_url=None):
     except requests.exceptions.ConnectionError:
         return {"status": "error", "error": "Could not connect to server"}
 
-def generate_emoji_remote(prompt, num_inference_steps=25, guidance_scale=7.5, num_images=1, output_path=None, server_url=None):
+def generate_emoji_remote(prompt, num_inference_steps=25, guidance_scale=7.5, num_images=1, output_path=None, server_url=None, use_rag=False, use_llm=False
+                          ):
     """Generate an emoji using the remote server."""
     if server_url is None:
         server_url = DEFAULT_SERVER_URL
@@ -45,7 +46,9 @@ def generate_emoji_remote(prompt, num_inference_steps=25, guidance_scale=7.5, nu
                 "num_inference_steps": num_inference_steps,
                 "guidance_scale": guidance_scale,
                 "num_images": num_images,
-                "output_path": output_path
+                "output_path": output_path,
+                "use_rag": use_rag,
+                "use_llm": use_llm
             }
         )
         

@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import torch
 from emoji_gen.models.model_manager import model_manager
-from emoji_gen.generation import save_image
+from emoji_gen.generation import generate_emoji as generate_emoji_logic
 from pathlib import Path
 import signal
 import sys
@@ -58,26 +58,22 @@ def generate_emoji():
     guidance_scale = data.get('guidance_scale', 7.5)
     # num_images = data.get('num_images', 1) # functionality to save multiple images is not implemented
     output_path = data.get('output_path', None)
-    
+    use_rag = data.get('use_rag', False)
+    use_llm = data.get('use_llm', False)
+
     if not SERVER_STATE["model"]:
         return jsonify({"status": "error", "error": "No model loaded"}), 500
     
     try:
-        # Generate the image using the pre-loaded model
-        result = SERVER_STATE["model"](
+        result = generate_emoji_logic(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
-            # num_images_per_prompt=num_images # functionality to save multiple images is not implemented
+            output_path=output_path,
+            use_rag=use_rag,
+            use_llm=use_llm
         )
-        
-        # Save the generated image
-        image_path = save_image(prompt, result.images[0], output_path)
-        
-        return jsonify({
-            "status": "success",
-            "image_path": str(image_path)
-        })
+        return jsonify(result)
         
     except Exception as e:
         return jsonify({
