@@ -193,7 +193,16 @@ class ModelManager:
 
                 if is_lora:
                     print(f"Loading LoRA model '{model_name}' (base: {base_model}) from weights at: {weights_path}")
-                    base_model_path = MODEL_ID_MAP.get(base_model, base_model)
+                    
+                    # START TEMPORARY, REALLY BAD CODE
+                    # config is out of sync bc trained on sd3.5 and sd3, I was lazy to make a better fix
+                    if base_model == 'sd3':
+                        base_model_path = "stabilityai/stable-diffusion-3-medium-diffusers"
+                        print(f"HOTFIX: Forcing base model to '{base_model_path}'")
+                    else:
+                        base_model_path = MODEL_ID_MAP.get(base_model, base_model)
+                    # END END END 
+
                     pipeline_class = self._get_pipeline_class_for_base_model(base_model)
                     
                     load_args = { "torch_dtype": self._dtype, "use_safetensors": True }
