@@ -16,7 +16,7 @@ DTYPE = torch.float32
 DEFAULT_MODEL = 'sd3'
 MODEL_ID_MAP = {
     "sd3": "stabilityai/stable-diffusion-3-medium-diffusers",
-    "sd3-ipadapter": "InstantX/SD3.5-Large-IP-Adapter", ## RAG MODEL
+    "sd3-ipadapter": "stabilityai/stable-diffusion-3.5-large", ## RAG MODEL
     "SD-XL": "stabilityai/stable-diffusion-xl-base-1.0",    
 
     # quality of life :)
