@@ -144,59 +144,43 @@ class ModelManager:
                 specific_checkpoint = checkpoint_part
                 print(f"Requested specific checkpoint: {specific_checkpoint}")
             
-            # return early if we already have the model
-            if self._initialized and model_name == self._model_id:
+            if self._initialized and model_name == self._model_id and self.active_model is not None:
                 return True, "Model already initialized"
 
             self.cleanup()
             
             if model_name in MODEL_ID_MAP:
                 model_path = MODEL_ID_MAP[model_name]
-
-                if model_name == "sd3-ipadapter": ## RAG MODEL
-                    # this is from docs
-                    print(f"Loading {model_name} pipeline")
-                    self.active_model = DiffusionPipeline.from_pretrained(
-                        model_path,
-                        torch_dtype=self._dtype, ## potentially bfloat16
-                        # use_safetensors=True ##  maybe???
-                    ).to(self._device)
-                elif "xl" in model_name.lower(): 
-                    print(f"Loading {model_name} pipeline")
-                    self.active_model = StableDiffusionXLPipeline.from_pretrained(
-                        model_path,
-                        torch_dtype=self._dtype,
-                        use_safetensors=True, 
-                        variant="fp16" if self._device == "cuda" else None ## ensure we are on GPU
-                    ).to(self._device)
-                elif "sd3" in model_name.lower(): # base sd3, not the ip-adapter one
-                    print(f"Loading {model_name} pipeline")
-                    self.active_model = StableDiffusion3Pipeline.from_pretrained(
-                        model_path,
-                        # torch_dtype=self._dtype,
-                        torch_dtype="float16",
-                        use_safetensors=True, 
-                        # variant=None # SD3 typically doesn't use variants like XL fp16
-                    ).to(self._device)
-                else: 
-                    ## fallback to other models. Shouldnt happen since fine tuned models are hanlded in else branch
-                    print(f"Warning: Loading model '{model_path}' with generic DiffusionPipeline.from_pretrained. Ensure this is appropriate.")
-                    self.active_model = DiffusionPipeline.from_pretrained(
-                        model_path,
-                        torch_dtype=self._dtype
-                    ).to(self._device)
-
-                self._model_id = model_name
-                self._initialized = True
-
-                return True, f"Successfully init {model_name} (base)"
                 
-                # self.active_model = pipeline_class.from_pretrained(
-                #     model_path,
-                #     torch_dtype=self._dtype,
-                #     use_safetensors=True, 
-                #     variant="fp16" if self._device == "cuda" and pipeline_class == StableDiffusionXLPipeline else None # variant typically for XL fp16
-                # ).to(self._device)
+                load_args = {
+                    "torch_dtype": self._dtype,
+                    "use_safetensors": True,
+                }
+
+                if model_name == "sd3-ipadapter":
+                    pipeline_class = DiffusionPipeline
+                elif "xl" in model_name.lower(): 
+                    pipeline_class = StableDiffusionXLPipeline
+                    if self._device == "cuda":
+                        load_args["variant"] = "fp16"
+                elif "sd3" in model_name.lower():
+                    pipeline_class = StableDiffusion3Pipeline
+                else: 
+                    pipeline_class = DiffusionPipeline
+
+                print(f"Loading base model '{model_name}' with {pipeline_class.__name__}...")
+                
+                # load model on CPU first
+                pipeline = pipeline_class.from_pretrained(model_path, **load_args)
+
+                if self._device == "cuda":
+                    print("Applying memory optimizations for CUDA device (CPU offload, attention slicing)...")
+                    pipeline.enable_model_cpu_offload()
+                    pipeline.enable_attention_slicing()
+                else:
+                    pipeline.to(self._device)
+
+                self.active_model = pipeline
             
             # fine tuned model
             else:
@@ -208,45 +192,62 @@ class ModelManager:
                 is_lora, weights_path, base_model = self._find_lora_weights_in_directory(model_specific_dir, specific_checkpoint)
 
                 if is_lora:
-                    if not base_model:
-                        error_message = (
-                            f"LoRA Model '{model_name}' found (weights at '{weights_path}'), "
-                            f"but its base model could not be determined. Ensure 'metadata.json' "
-                            f"with a 'base_model' key exists in the model's main directory: '{model_specific_dir}'."
-                        )
-                        return False, error_message
-
-                    print(f"Loading LoRA model '{model_name}' (base: {base_model})")
-                    print(f"LoRA weights at: {weights_path}")
-
+                    print(f"Loading LoRA model '{model_name}' (base: {base_model}) from weights at: {weights_path}")
                     base_model_path = MODEL_ID_MAP.get(base_model, base_model)
-                    
-                    # Get appropriate pipeline class
                     pipeline_class = self._get_pipeline_class_for_base_model(base_model)
+                    
+                    load_args = { "torch_dtype": self._dtype, "use_safetensors": True }
+                    if self._device == "cuda" and base_model in ['sd-xl', 'sdxl']:
+                        load_args["variant"] = "fp16"
 
-                    # Load base model with appropriate pipeline
-                    self.active_model = pipeline_class.from_pretrained(
-                        base_model_path,
-                        torch_dtype=self._dtype,
-                        use_safetensors=True, 
-                        variant="fp16" if self._device == "cuda" and base_model in ['sd-xl', 'sdxl'] else None
-                    ).to(self._device)
-                    self.active_model.load_lora_weights(str(weights_path))
+                    # load base on cpu, then load lora wei
+                    print(f"Loading base model '{base_model_path}' to CPU...")
+                    pipeline = pipeline_class.from_pretrained(base_model_path, **load_args)
+                    print(f"Fusing LoRA weights from '{weights_path}' on CPU...")
+                    pipeline.load_lora_weights(weights_path)
+                    
+                    # apply optimizations, move to cuda
+                    if self._device == "cuda":
+                        print("Applying memory optimizations for CUDA (CPU offload, attention slicing)...")
+                        pipeline.enable_model_cpu_offload()
+                        pipeline.enable_attention_slicing()
+                    else:
+                        pipeline.to(self._device)
+                    self.active_model = pipeline
                 
                 else:
-                    # add functionality for other FT like FFT or plain dreambooth
-                    return False, f"FFT not implemented yet"
+                    base_model = self._infer_base_model_from_name(model_name)
+                    pipeline_class = self._get_pipeline_class_for_base_model(base_model)
+                    
+                    load_args = { "torch_dtype": self._dtype, "use_safetensors": True }
+                    if self._device == "cuda" and base_model in ['sd-xl', 'sdxl']:
+                        load_args["variant"] = "fp16"
 
-                if self.active_model is None:
-                    return False, f"Failed to load model '{model_name}'"
-                
-                self._model_id = model_name
-                self._initialized = True
+                    try:
+                        # load on CPU first
+                        pipeline = pipeline_class.from_pretrained(str(model_specific_dir), **load_args)
+                        
+                        # apply optimizations
+                        if self._device == "cuda":
+                           print("Applying memory optimizations for CUDA (CPU offload, attention slicing)...")
+                           pipeline.enable_model_cpu_offload()
+                           pipeline.enable_attention_slicing()
+                        else:
+                            pipeline.to(self._device)
+                        self.active_model = pipeline
+                    except Exception as e:
+                        return False, f"Failed to load full fine-tune model '{model_name}': {str(e)}"
 
-                pipeline_type = type(self.active_model).__name__
-                print(f"Successfully loaded {pipeline_type}")
+            if self.active_model is None:
+                return False, f"Failed to load model '{model_name}'"
+            
+            self._model_id = model_name
+            self._initialized = True
 
-                return True, f"Successfully loaded {pipeline_type}"
+            pipeline_type = type(self.active_model).__name__
+            print(f"Successfully loaded {pipeline_type}")
+
+            return True, f"Successfully loaded {pipeline_type}"
             
         except Exception as e:
             self.cleanup()
