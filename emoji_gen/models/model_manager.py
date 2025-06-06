@@ -158,7 +158,30 @@ class ModelManager:
                 }
 
                 if model_name == "sd3-ipadapter":
-                    pipeline_class = DiffusionPipeline
+                    print("IP-Adapter model requested. Loading base SD3 model first...")
+                    
+                    # 1. load  base SD3 model
+                    base_model_id = "stabilityai/stable-diffusion-3-medium-diffusers"
+                    pipeline = StableDiffusion3Pipeline.from_pretrained(
+                        base_model_id,
+                        torch_dtype=self._dtype,
+                        use_safetensors=True
+                    )
+                    
+                    # 2. load IP-Adapter weights
+                    ip_adapter_id = "InstantX/SD3.5-Large-IP-Adapter"
+                    print(f"Loading and attaching IP-Adapter weights from '{ip_adapter_id}'...")
+                    pipeline.load_ip_adapter(ip_adapter_id, subfolder="sd3_ip-adapter", weight_name="ip-adapter.bin")
+                    
+                    # 3. apply memory optimizations
+                    if self._device == "cuda":
+                        print("Applying memory optimizations for CUDA device (CPU offload, attention slicing)...")
+                        pipeline.enable_model_cpu_offload()
+                        pipeline.enable_attention_slicing()
+                    else:
+                        pipeline.to(self._device)
+
+                    self.active_model = pipeline                    
                 elif "xl" in model_name.lower(): 
                     pipeline_class = StableDiffusionXLPipeline
                     if self._device == "cuda":
