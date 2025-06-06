@@ -14,6 +14,18 @@ import json
 from huggingface_hub import RepoCard
 from huggingface_hub.utils import EntryNotFoundError
 
+
+try:
+    from emoji_gen.models.instantx.transformer_sd3 import SD3Transformer2DModel
+    from emoji_gen.models.instantx.pipeline_stable_diffusion_3_ipa import StableDiffusion3Pipeline as SD3IPAdapterPipeline
+    IPADAPTER_AVAILABLE = True
+    print("InstantX IP-Adapter modules loaded successfully")
+except ImportError as e:
+    IPADAPTER_AVAILABLE = False
+    print(f"IP-Adapter modules not available. This might be bc you are on local computer: {e}")
+    print
+
+    
 class ModelManager:
     def __init__(self):
         self.active_model = None
@@ -157,42 +169,57 @@ class ModelManager:
                     "use_safetensors": True,
                 }
 
-                if model_name == "sd3-ipadapter":
-                    print("SD3.5 IP-Adapter model requested. Loading with special handling...")
-                    try:
-                        pipeline = DiffusionPipeline.from_pretrained(
-                            model_path,
-                            torch_dtype=self._dtype,
-                            use_safetensors=True,
-                            trust_remote_code=True ## 
+                if model_name in MODEL_ID_MAP:
+                    model_path = MODEL_ID_MAP[model_name]
+
+                    # HANDLE THIS SPECIALLY 
+                    if model_name == "sd3-ipadapter":
+                        if not IPADAPTER_AVAILABLE:
+                            return False, "IP-Adapter modules not available. InstantX files not found."
+                        
+                        print("Loading SD3.5-Large with IP-Adapter for RAG functionality...")
+                        
+                        base_model_path = 'stabilityai/stable-diffusion-3.5-large'
+                        ip_adapter_path = 'emoji_gen/models/weights/ip-adapter.bin'
+                        image_encoder_path = "google/siglip-so400m-patch14-384"
+                        
+                        ip_adapter_file = Path(ip_adapter_path)
+                        if not ip_adapter_file.exists():
+                            return False, f"IP-Adapter weights not found at {ip_adapter_path}"
+                        
+                        print("Loading SD3 transformer...")
+                        transformer = SD3Transformer2DModel.from_pretrained(
+                            base_model_path, 
+                            subfolder="transformer", 
+                            torch_dtype=self._dtype
                         )
                         
+                        print("Loading SD3 pipeline with IP-Adapter support...")
+                        pipeline = SD3IPAdapterPipeline.from_pretrained(
+                            base_model_path, 
+                            transformer=transformer, 
+                            torch_dtype=self._dtype
+                        )
+                        
+                        print("Initializing IP-Adapter...")
+                        pipeline.init_ipadapter(
+                            ip_adapter_path=ip_adapter_path,
+                            image_encoder_path=image_encoder_path,
+                            nb_token=64,
+                        )
+
+                        # memops
                         if self._device == "cuda":
+                            print("Moving pipeline to CUDA and applying optimizations...")
+                            pipeline = pipeline.to("cuda")
                             pipeline.enable_model_cpu_offload()
                             if hasattr(pipeline, 'enable_attention_slicing'):
                                 pipeline.enable_attention_slicing()
                         else:
-                            pipeline.to(self._device)
+                            pipeline = pipeline.to(self._device)
                         
                         self.active_model = pipeline
-                        
-                    except Exception as e:
-                        print(f"Error loading SD3.5 IP-Adapter: {e}")
-                        print("Falling back to base SD3 model...")
-                        
-                        pipeline = StableDiffusion3Pipeline.from_pretrained(
-                            "stabilityai/stable-diffusion-3-medium-diffusers",
-                            torch_dtype=self._dtype,
-                            use_safetensors=True
-                        )
-                        
-                        if self._device == "cuda":
-                            pipeline.enable_model_cpu_offload()
-                            pipeline.enable_attention_slicing()
-                        else:
-                            pipeline.to(self._device)
-                        
-                        self.active_model = pipeline
+                        print("SD3.5 IP-Adapter loaded successfully! RAG functionality is now available.")
                 elif "xl" in model_name.lower(): 
                     pipeline_class = StableDiffusionXLPipeline
                     if self._device == "cuda":
