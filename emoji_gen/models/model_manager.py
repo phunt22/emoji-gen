@@ -158,7 +158,41 @@ class ModelManager:
                 }
 
                 if model_name == "sd3-ipadapter":
-                    pipeline_class = DiffusionPipeline
+                    print("SD3.5 IP-Adapter model requested. Loading with special handling...")
+                    try:
+                        pipeline = DiffusionPipeline.from_pretrained(
+                            model_path,
+                            torch_dtype=self._dtype,
+                            use_safetensors=True,
+                            trust_remote_code=True ## 
+                        )
+                        
+                        if self._device == "cuda":
+                            pipeline.enable_model_cpu_offload()
+                            if hasattr(pipeline, 'enable_attention_slicing'):
+                                pipeline.enable_attention_slicing()
+                        else:
+                            pipeline.to(self._device)
+                        
+                        self.active_model = pipeline
+                        
+                    except Exception as e:
+                        print(f"Error loading SD3.5 IP-Adapter: {e}")
+                        print("Falling back to base SD3 model...")
+                        
+                        pipeline = StableDiffusion3Pipeline.from_pretrained(
+                            "stabilityai/stable-diffusion-3-medium-diffusers",
+                            torch_dtype=self._dtype,
+                            use_safetensors=True
+                        )
+                        
+                        if self._device == "cuda":
+                            pipeline.enable_model_cpu_offload()
+                            pipeline.enable_attention_slicing()
+                        else:
+                            pipeline.to(self._device)
+                        
+                        self.active_model = pipeline
                 elif "xl" in model_name.lower(): 
                     pipeline_class = StableDiffusionXLPipeline
                     if self._device == "cuda":
