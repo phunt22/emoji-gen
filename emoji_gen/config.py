@@ -87,7 +87,7 @@ Required Elements:
 Core emoji concept in 3-6 words
 2. Key Colors (mandatory but brief)
 
-Maximum 3-4 colors for main components
+Maximum 3-4 colors for main components 
 Use short color names: red, blue, yellow, green, orange, pink, purple
 Example: "red heart. yellow outline."
 
@@ -115,4 +115,7 @@ Keep description under 6 words
 Use maximum 4 colors with single-word names
 Choose only essential addon phrases
 Always end with: "soft lighting. white background. sks emoji"
-Total output must be under 77 tokens"""
+Total output must be under 77 tokens
+
+Here is an input prompt, return the output prompt:
+"""

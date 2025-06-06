@@ -89,23 +89,18 @@ def augment_prompt_with_llm(original_prompt: str) -> str:
         logger.warning("LLM not available for prompt augmentation. Returning original prompt.")
         return original_prompt
 
-    # config
-    system_prompt = LLM_SYSTEM_PROMPT
-    
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": original_prompt}
-    ]
+    # config or default
+    system_prompt = LLM_SYSTEM_PROMPT or "Make this emoji prompt more descriptive for an image generation model, focusing on visual details: "
+    input_text = system_prompt + original_prompt ## just append it, at least for now
+    logger.debug(f"LLM input_text: '{input_text}'")
 
     try:
-        # Use the chat template to format the input correctly for the model
-        input_ids = llm_tokenizer.apply_chat_template(messages, return_tensors="pt", add_generation_prompt=True).to(llm_model.device)
+        inputs = llm_tokenizer(input_text, return_tensors="pt", truncation=True, max_length=1024).to(llm_model.device)
 
         # 77 comes from the fact that model is fine tuned on max of 77 char
-        outputs = llm_model.generate(input_ids, max_new_tokens=77, num_beams=4, early_stopping=True)
-        
-        # decode only newly generated tokens, not the input prompt
-        augmented_prompt = llm_tokenizer.decode(outputs[0][len(input_ids[0]):], skip_special_tokens=True)
+        outputs = llm_model.generate(**inputs, max_length=77, num_beams=4, early_stopping=True)
+        print("outputs", outputs)
+        augmented_prompt = llm_tokenizer.decode(outputs[0], skip_special_tokens=True)
         
         logger.info(f"Original prompt: '{original_prompt}', Augmented prompt: '{augmented_prompt}'")
         return augmented_prompt
