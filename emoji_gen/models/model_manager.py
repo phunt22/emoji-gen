@@ -152,30 +152,6 @@ class ModelManager:
             if model_name in MODEL_ID_MAP:
                 model_path = MODEL_ID_MAP[model_name]
 
-                if model_name == "sd3-ipadapter":
-                    print("SD3.5 IP-Adapter model requested. Loading directly from InstantX...")
-                    try:
-                        pipeline = DiffusionPipeline.from_pretrained(
-                            torch_dtype=self._dtype,
-                            use_safetensors=True,
-                        )
-
-                        # memops
-                        if self._device == "cuda":
-                            print("Applying memory optimizations")
-                            pipeline.enable_model_cpu_offload()
-                            if hasattr(pipeline, 'enable_attention_slicing'):
-                                pipeline.enable_attention_slicing()
-                        else:
-                            pipeline.to(self._device)
-                        self.active_model = pipeline
-                    except Exception as e:
-                        print(f"Error loading SD3.5 IP-Adapter {e}")
-                        self.cleanup()
-                        return False
-
-
-
                 load_args = {
                     "torch_dtype": self._dtype,
                     "use_safetensors": True,
@@ -206,28 +182,29 @@ class ModelManager:
                         pipeline.to(self._device)
 
                     self.active_model = pipeline                    
-                elif "xl" in model_name.lower(): 
-                    pipeline_class = StableDiffusionXLPipeline
-                    if self._device == "cuda":
-                        load_args["variant"] = "fp16"
-                elif "sd3" in model_name.lower():
-                    pipeline_class = StableDiffusion3Pipeline
-                else: 
-                    pipeline_class = DiffusionPipeline
-
-                print(f"Loading base model '{model_name}' with {pipeline_class.__name__}...")
-                
-                # load model on CPU first
-                pipeline = pipeline_class.from_pretrained(model_path, **load_args)
-
-                if self._device == "cuda":
-                    print("Applying memory optimizations for CUDA device (CPU offload, attention slicing)...")
-                    pipeline.enable_model_cpu_offload()
-                    pipeline.enable_attention_slicing()
                 else:
-                    pipeline.to(self._device)
+                    if "xl" in model_name.lower(): 
+                        pipeline_class = StableDiffusionXLPipeline
+                        if self._device == "cuda":
+                            load_args["variant"] = "fp16"
+                    elif "sd3" in model_name.lower():
+                        pipeline_class = StableDiffusion3Pipeline
+                    else: 
+                        pipeline_class = DiffusionPipeline
 
-                self.active_model = pipeline
+                    print(f"Loading base model '{model_name}' with {pipeline_class.__name__}...")
+                    
+                    # load model on CPU first
+                    pipeline = pipeline_class.from_pretrained(model_path, **load_args)
+
+                    if self._device == "cuda":
+                        print("Applying memory optimizations for CUDA device (CPU offload, attention slicing)...")
+                        pipeline.enable_model_cpu_offload()
+                        pipeline.enable_attention_slicing()
+                    else:
+                        pipeline.to(self._device)
+
+                    self.active_model = pipeline
             
             # fine tuned model
             else:
