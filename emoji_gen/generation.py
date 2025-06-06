@@ -136,7 +136,6 @@ def get_rag_ip_adapter_inputs(prompt: str) -> Tuple[Optional[Image.Image], Optio
 
         best_match_idx = torch.argmax(similarities).item()
         best_clip_score = similarities[best_match_idx].item()
-
         retrieved_image_path = _cached_rag_image_paths[best_match_idx]
         retrieved_image: Optional[Image.Image] = None
 
@@ -214,7 +213,7 @@ def generate_emoji(
             logger.info("Retrieving RAG inputs for IP-Adapter...")
             rag_reference_image, rag_scale_value = get_rag_ip_adapter_inputs(final_prompt)
             
-            active_pipeline_for_generation = model_pipeline
+            # active_pipeline_for_generation = model_pipeline
 
             if rag_reference_image and rag_scale_value is not None:
                 logger.info(f"Using RAG with retrieved image and calculated scale {rag_scale_value:.4f}")
@@ -237,16 +236,14 @@ def generate_emoji(
                     logger.error(f"RAG requested for {pipeline_class_name} or model ID {current_model_identifier} for direct IP-Adapter params. ")
             else:
                 logger.warning("RAG requested but could not retrieve necessary inputs. Proceeding without RAG.")
-        else:
-            # RAG is not used, or failed to get inputs.
-            pass 
+       
         
         # make sure in inference/eval mode
-        if hasattr(active_pipeline_for_generation, "eval"):
-            active_pipeline_for_generation.eval()
+        if hasattr(model_pipeline, "eval"):
+            model_pipeline.eval()
 
         # get the list of images from the pipeline output
-        pipeline_output = active_pipeline_for_generation(**model_call_params)
+        pipeline_output = model_pipeline(**model_call_params)
         generated_images_list = pipeline_output.images
         
         # make sure that we got at least one image (should only be one by default)
