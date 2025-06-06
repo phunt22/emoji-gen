@@ -160,7 +160,7 @@ class ModelManager:
                 print("IP-Adapter model requested. Loading using local InstantX implementation...")
                 try:
                     # based on  documentation for InstantX/SD3.5-Large-IP-Adapter
-                    model_path = "stabilityai/stable-diffusion-3-large-diffusers"
+                    model_path = "stabilityai/stable-diffusion-3.5-large"
                     ip_adapter_path = Path.cwd() / 'temp-instantx' / 'ip-adapter.bin'
                     image_encoder_path = "google/siglip-so400m-patch14-384"
                     
