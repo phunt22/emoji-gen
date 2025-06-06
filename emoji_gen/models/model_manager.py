@@ -171,7 +171,7 @@ class ModelManager:
                     # 2. load IP-Adapter weights
                     ip_adapter_id = "InstantX/SD3.5-Large-IP-Adapter"
                     print(f"Loading and attaching IP-Adapter weights from '{ip_adapter_id}'...")
-                    pipeline.load_ip_adapter(ip_adapter_id, subfolder="sd3_ip-adapter", weight_name="ip-adapter.bin")
+                    pipeline.load_ip_adapter(ip_adapter_id, subfolder="sd3_ip-adapter", weight_name="ip-adapter.safetensors")
                     
                     # 3. apply memory optimizations
                     if self._device == "cuda":
