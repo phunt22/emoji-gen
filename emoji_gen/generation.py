@@ -97,6 +97,7 @@ def augment_prompt_with_llm(original_prompt: str) -> str:
     try:
         inputs = llm_tokenizer(input_text, return_tensors="pt", truncation=True, max_length=200).to(llm_model.device)
 
+        # 77 comes from the fact that model is fine tuned on max of 77 char
         outputs = llm_model.generate(**inputs, max_length=77, num_beams=4, early_stopping=True)
         augmented_prompt = llm_tokenizer.decode(outputs[0], skip_special_tokens=True)
         
@@ -160,9 +161,17 @@ def get_rag_ip_adapter_inputs(prompt: str) -> Tuple[Optional[Image.Image], Optio
         # Likely want to bias towards a mid range unless we have a bad score or a really good one
 
         # map [-1, 1] to [0, 1]
+
+        # however, we want some variation so drop below 1 to 
+        # we also want the reference image to matter for styling, so dont drop too low
+        # 0.5 is an even mix of style and 
+
+
+
         rag_scale = max(0.0, best_clip_score) ## ReLU
         # rag_scale = (best_clip_score + 1) / 2 
         rag_scale = max(0.0, min(1.0, rag_scale)) ## need to be [0,1], sanity check
+
         
 
         return retrieved_image, rag_scale

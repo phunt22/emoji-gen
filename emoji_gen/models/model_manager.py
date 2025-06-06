@@ -198,7 +198,6 @@ class ModelManager:
                     # config is out of sync bc trained on sd3.5 and sd3, I was lazy to make a better fix
                     if base_model == 'sd3':
                         base_model_path = "stabilityai/stable-diffusion-3-medium-diffusers"
-                        print(f"HOTFIX: Forcing base model to '{base_model_path}'")
                     else:
                         base_model_path = MODEL_ID_MAP.get(base_model, base_model)
                     # END END END 
