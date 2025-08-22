@@ -2,7 +2,7 @@
 
 [![Project Thumbnail](assets/thumbnail.png)](assets/thumbnail.png)
 
-A project for generating custom emojis using fine-tuned open source diffusion models. Additionally provides CLIs for both dev and generation.
+A project for generating custom emojis (like these above) using fine-tuned open source diffusion models. Additionally provides CLIs for both dev and generation. I completely broke this project and abandoned it after the class was over, but while it was running it was awesome. Read the below poster and report for more info.
 
 ## 📚 Project Documentation
 
@@ -11,23 +11,24 @@ A project for generating custom emojis using fine-tuned open source diffusion mo
 
 ## 🚨 This project is not fully complete 🚨
 
-- RAG System: Partially implemented but needs refinement
-- LLM Integration: Basic implementation exists but could be improved
+- RAG System: Partially implemented but needs refinement, not actually used in generation yet
+- LLM Integration: Very basic implementation exists but could be improved
 - Error Handling: Some edge cases not fully handled
-- Testing: Limited test coverage
-- Model Validation: Fine-tuned models need validation pipeline
-- Performance Optimization: Memory management and GPU optimization ongoing
+- Testing: No testing lol
+- Model Validation: Fine-tuned models need validation pipeline, often drift
+- Performance Optimization: Memory management and GPU optimization very poor
+- Lot of VM specific issues
 
 ## Features
 
 - Text-to-Emoji Generation: Convert text descriptions to custom emoji images
 - Multiple Model Support: SD 1.5, SDXL, and SD3 Medium
 - Fine-tuning Pipeline: DreamBooth implementation for custom emoji training
-- RAG Enhancement: Use existing emoji data to improve generation quality
+- RAG/LLM Enhancement: Enhance prompts with LLMs and (kind of) RAG
 - Server Mode: Fast consecutive generation via Flask server
 - Benchmark Mode: Test generation quality across multiple prompts
 
-## Installation
+## Installation (probably will not work, project abandoned)
 
 **Setup:**
 
@@ -42,7 +43,7 @@ A project for generating custom emojis using fine-tuned open source diffusion mo
 
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   source venv/bin/activate
    ```
 
 3. **Install the package in development mode:**
@@ -128,6 +129,9 @@ emoji-gen --benchmark
 
 # Custom benchmark output folder
 emoji-gen --benchmark --name my_test_run
+
+# Benchmark prompts are stored in `emoji_gen/benchmarks/prompts.txt`
+# Output goes to `generated_emojis/benchmark_[timestamp]/` by default
 
 # Use RAG enhancement
 emoji-gen "pizza slice" --rag
@@ -218,5 +222,5 @@ If you think they're annoying (like I do) these to your VSCode `files.exclude`:
 ## Acknowledgments
 
 - **Stable Diffusion Team** - Base models and fine-tuning techniques
-- **Evan Zhou** - Project guidance and support
+- **Evan Zhou** - Inspiration from his project, open-genmoji
 - **Hugging Face** - Diffusers library and model hosting
