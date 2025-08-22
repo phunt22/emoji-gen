@@ -16,7 +16,7 @@ _llm_dtype = None
 _clip_dtype = None
 
 # TODO import these from config.py
-DEFAULT_LLM_MODEL_ID = "google/flan-t5-small"
+DEFAULT_LLM_MODEL_ID = "google/gemma-2b-it"
 DEFAULT_CLIP_MODEL_ID = "openai/clip-vit-base-patch32"
 
 def _initialize_device_and_dtypes():
@@ -35,13 +35,36 @@ def get_llm_pipeline():
     # only load model if not already loaded
     if _llm_model is None:
         try:
-            _llm_model = AutoModelForSeq2SeqLM.from_pretrained(
+            from transformers import AutoModelForCausalLM
+
+            _llm_model = AutoModelForCausalLM.from_pretrained(
                 DEFAULT_LLM_MODEL_ID,
-                torch_dtype=_llm_dtype
+                torch_dtype=_llm_dtype,
+                low_cpu_mem_usage=True
             ).to(_device)
             _llm_model.eval() ## like inference mode
 
             _llm_tokenizer = AutoTokenizer.from_pretrained(DEFAULT_LLM_MODEL_ID)
+
+            # Gemma uses a specific chat template format that needs to be set.
+            if "gemma" in DEFAULT_LLM_MODEL_ID and _llm_tokenizer.chat_template is None:
+                logger.info("Setting Gemma chat template on tokenizer.")
+                gemma_template = (
+                    "{% for message in messages %}"
+                    "{% if message['role'] == 'user' %}"
+                    "{{ '<start_of_turn>user\\n' + message['content'] + '<end_of_turn>\\n' }}"
+                    "{% elif message['role'] == 'assistant' %}"
+                    "{{ '<start_of_turn>model\\n' + message['content'] + '<end_of_turn>\\n' }}"
+                    "{% elif message['role'] == 'system' %}"
+                    "{{ message['content'] + '\\n' }}"
+                    "{% endif %}"
+                    "{% endfor %}"
+                    "{% if add_generation_prompt %}"
+                    "{{ '<start_of_turn>model\\n' }}"
+                    "{% endif %}"
+                )
+                _llm_tokenizer.chat_template = gemma_template
+
             logger.info(f"LLM model '{DEFAULT_LLM_MODEL_ID}' loaded successfully on {_device} with dtype {_llm_dtype}.")
         except Exception as e:
             logger.error(f"Failed to load LLM model '{DEFAULT_LLM_MODEL_ID}': {e}", exc_info=True)

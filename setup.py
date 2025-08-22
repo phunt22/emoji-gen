@@ -9,7 +9,7 @@ setup(
     install_requires=[
         "torch",
         "torchvision",
-        "torchaudio"
+        "torchaudio",
         "diffusers @ git+https://github.com/huggingface/diffusers.git", ## IMPORTANT from the git here
         "transformers",
         "accelerate",
@@ -17,7 +17,6 @@ setup(
         "pillow",
         "numpy",
         "tqdm",
-        "shutil",
         
         # fine tuning dependencies
         "peft",  # For LoRA

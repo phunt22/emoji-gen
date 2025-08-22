@@ -119,3 +119,75 @@ Total output must be under 77 tokens
 
 Here is an input prompt, return the output prompt:
 """
+
+
+
+# For proejct
+# Smiling cat with heart eyes emoji
+# smiling cat with heart eyes sks emoji
+# emoji of smiling cat with heart eyes. orange fur. red hearts. black eyes. cute. big head. facing viewer. soft lighting. white background. sks emoji
+# emoji of smiling cat with heart eyes. orange fur. red hearts. black eyes. cute. big head. facing viewer. soft lighting. white background
+
+
+
+# Overthinking gremlin with iced coffee emoji
+# Chaotic raccoon in leather jacket emoji
+# Tired wizard on hoverboard emoji
+# Pizza slice loves donut emoji
+# Crying sushi with umbrella emoji
+# Judgmental avocado sips matcha emoji
+# Skater cat kickflips rainbow emoji
+# Frog in hoodie side-eyes void emoji
+# Cowboy snail with lasso emoji
+# Corgi in crown throws shade emoji
+# Ghost DJ at haunted club emoji
+# Cyberpunk mushroom with LED eyes emoji
+# Alien sips bubble tea on UFO emoji
+# Dragon does yoga in garden emoji
+# Mermaid takes waterproof selfies emoji
+# Buffering emoji stuck loading emoji
+# Laptop with googly eyes panics emoji
+# Goth hamster writes poetry emoji
+# Banana lifts weights flexing emoji
+# Sassy taco in high heels emoji
+# Soft rage emoji holds calm sign emoji
+# Romantic donut plans candlelit date emoji
+# 404 error face looks existential emoji
+# Bunny CEO on carrot phone emoji
+# Wizard pancake casts syrup spells emoji
+# AI with flower crown has crisis emoji
+# Dead inside emoji with sparkly eyeliner emoji
+# Suspicious cloud plans something sketchy emoji
+# Judgy sun wears sunglasses at night emoji
+# Happy volcano gives hugs emoji
+
+# emoji of overthinking gremlin with iced coffee. green skin. brown coffee. black eyes. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of chaotic raccoon in leather jacket. gray fur. black jacket. white face. big head. facing viewer. soft lighting. white background. sks emoji
+# emoji of tired wizard on hoverboard. purple robe. gray beard. blue board. facing viewer. soft lighting. white background. sks emoji
+# emoji of pizza slice hugging donut. yellow cheese. red sauce. pink donut. textured. soft lighting. white background. sks emoji
+# emoji of crying sushi holding umbrella. white rice. pink fish. blue umbrella. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of judgmental avocado sipping matcha. green skin. brown pit. yellow cup. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of skater cat kickflipping rainbow. orange fur. black board. rainbow trail. big head. facing viewer. soft lighting. white background. sks emoji
+# emoji of frog in hoodie side-eyeing void. green skin. blue hoodie. black eyes. big head. facing viewer. soft lighting. white background. sks emoji
+# emoji of cowboy snail with lasso. brown shell. tan hat. yellow lasso. cute. big head. facing viewer. soft lighting. white background. sks emoji
+# emoji of corgi in crown throwing shade. orange fur. gold crown. black glasses. big head. facing viewer. soft lighting. white background. sks emoji
+# emoji of ghost DJ at haunted club. white ghost. black headphones. purple lights. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of cyberpunk mushroom with LED eyes. red cap. white stem. blue eyes. textured. soft lighting. white background. sks emoji
+# emoji of alien sipping bubble tea on UFO. green skin. pink drink. silver UFO. facing viewer. soft lighting. white background. sks emoji
+# emoji of dragon doing yoga in garden. green scales. purple mat. yellow flowers. facing viewer. soft lighting. white background. sks emoji
+# emoji of mermaid taking waterproof selfies. pink hair. blue tail. white phone. facing viewer. soft lighting. white background. sks emoji
+# emoji of buffering face stuck loading. blue circle. gray face. white bar. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of laptop with googly eyes panicking. gray screen. black keys. white eyes. textured. soft lighting. white background. sks emoji
+# emoji of goth hamster writing poetry. brown fur. black outfit. purple pen. big head. facing viewer. soft lighting. white background. sks emoji
+# emoji of banana lifting weights flexing. yellow peel. black weights. white teeth. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of sassy taco in high heels. yellow shell. green lettuce. red shoes. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of soft rage face holding calm sign. red face. white sign. black eyes. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of romantic donut planning candlelit date. pink frosting. white candle. red heart. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of 404 error face looking existential. blue face. white text. black eyes. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of bunny CEO on carrot phone. white fur. orange phone. blue suit. big head. facing viewer. soft lighting. white background. sks emoji
+# emoji of wizard pancake casting syrup spells. brown pancake. yellow syrup. purple hat. textured. facing viewer. soft lighting. white background. sks emoji
+# emoji of AI with flower crown having crisis. silver face. pink flowers. blue eyes. facing viewer. soft lighting. white background. sks emoji
+# emoji of dead inside face with sparkly eyeliner. gray face. purple glitter. black eyes. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of suspicious cloud planning something sketchy. white cloud. black eyes. gray shadow. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of judgy sun wearing sunglasses at night. yellow rays. black glasses. blue background. cute. facing viewer. soft lighting. white background. sks emoji
+# emoji of happy volcano giving hugs. brown rock. red lava. pink cheeks. cute. facing viewer. soft lighting. white background. sks emoji
