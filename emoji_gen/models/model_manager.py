@@ -13,6 +13,13 @@ import gc
 import json
 from huggingface_hub import RepoCard
 from huggingface_hub.utils import EntryNotFoundError
+import sys
+
+# Add the cloned repo to the path
+sys.path.append(str(Path.cwd() / 'temp-instantx'))
+
+from models.transformer_sd3 import SD3Transformer2DModel
+from pipeline_stable_diffusion_3_ipa import StableDiffusion3Pipeline as StableDiffusion3PipelineIPAdapter
 
 class ModelManager:
     def __init__(self):
@@ -21,6 +28,17 @@ class ModelManager:
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         self._initialized = False
+
+    def _infer_base_model_from_name(self, model_name: str) -> str:
+        model_name_lower = model_name.lower()
+        model_id = None
+
+        if 'sd3' in model_name_lower or 'sd-3' in model_name_lower:
+            model_id =  'sd3'
+        else:
+            model_id =  'sd-xl'
+
+        return model_id
 
     def __del__(self):
         self.cleanup()
@@ -45,136 +63,243 @@ class ModelManager:
             self._model_id = None
             self._initialized = False
 
-    def _find_lora_weights_in_directory(self, model_dir: Path) -> Tuple[bool, Optional[Path], Optional[str]]:
-       
+    def _find_lora_weights_in_directory(self, model_dir: Path, specific_checkpoint: Optional[str] = None) -> Tuple[bool, Optional[Path], Optional[str]]:
         possible_lora_files = [
-            # main one
             "pytorch_lora_weights.safetensors",
-            # alternative, not needed yet
-            "adapter_model.safetensors",
+            # not needed I think?
+            "adapter_model.safetensors", 
             "adapter_model.bin"
         ]
+
+        base_model = self._infer_base_model_from_name(model_dir.name)
         
-        # check direct directory first
+        # If specific checkpoint requested, check that first
+        if specific_checkpoint:
+            checkpoint_dir = model_dir / f"checkpoint-{specific_checkpoint}"
+            if checkpoint_dir.exists() and checkpoint_dir.is_dir():
+                for lora_file in possible_lora_files:
+                    if (checkpoint_dir / lora_file).exists():
+                        print(f"Found LoRA weights in requested checkpoint: {checkpoint_dir / lora_file}")
+                        return True, checkpoint_dir, base_model
+            
+            # check nested structure: model_dir/model_name/checkpoint-X/
+            for subdir in model_dir.iterdir():
+                if subdir.is_dir() and not subdir.name.startswith('checkpoint-'):
+                    nested_checkpoint_dir = subdir / f"checkpoint-{specific_checkpoint}"
+                    if nested_checkpoint_dir.exists() and nested_checkpoint_dir.is_dir():
+                        for lora_file in possible_lora_files:
+                            if (nested_checkpoint_dir / lora_file).exists():
+                                print(f"Found LoRA weights in requested nested checkpoint: {nested_checkpoint_dir / lora_file}")
+                                return True, nested_checkpoint_dir, base_model
+            
+            print(f"Warning: Requested checkpoint-{specific_checkpoint} not found, falling back to latest")
+        
+        
+        all_checkpoints = []
+        
+        # direct checkpoints
+        all_checkpoints.extend([d for d in model_dir.glob("checkpoint-*") if d.is_dir()])
+        
+        # nested checkpoints
+        for subdir in model_dir.iterdir():
+            if subdir.is_dir() and not subdir.name.startswith('checkpoint-'):
+                all_checkpoints.extend([d for d in subdir.glob("checkpoint-*") if d.is_dir()])
+        
+        # sort by number
+        all_checkpoints = sorted(all_checkpoints, key=lambda p: int(p.name.split("-")[-1]))
+
+        # check direct directory
+        for ckpt_dir in reversed(all_checkpoints):  ## start from latest checkpoint
+            for lora_file in possible_lora_files:
+                if (ckpt_dir / lora_file).exists():
+                    print(f"Found LoRA weights in checkpoint: {ckpt_dir / lora_file}")
+                    return True, ckpt_dir, base_model
+                
+        # check direct directory
         for lora_file in possible_lora_files:
             if (model_dir / lora_file).exists():
-                # try to read base model from metadata.json
-                base_model = self._read_base_model_from_metadata(model_dir)
+                print(f"Found LoRA weights in main directory: {model_dir / lora_file}")
                 return True, model_dir, base_model
         
         # check subdirectories (shouldnt happen, but did initially in testing)
         for subdir in model_dir.iterdir():
-            if subdir.is_dir():
+            if subdir.is_dir() and not subdir.name.startswith('checkpoint-'):
                 for lora_file in possible_lora_files:
                     if (subdir / lora_file).exists():
-                        base_model = self._read_base_model_from_metadata(subdir)
+                        print(f"Found LoRA weights in subdirectory: {subdir / lora_file}")
                         return True, subdir, base_model
         
         return False, None, None
 
-    def _read_base_model_from_metadata(self, weights_dir: Path) -> Optional[str]:
-        
-        metadata_path = weights_dir / "metadata.json"
-        if metadata_path.exists():
-            try:
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                    return metadata.get('base_model')
-            except Exception as e:
-                print(f"Warning: Could not read metadata.json: {e}")
-        return None
-
-    # def _get_pipeline_class_from_model_id(self, model_id: str):
-    #     model_id_lower = model_id.lower()
-        
-    #     if "xl" in model_id_lower or "sdxl" in model_id_lower:
-    #         return StableDiffusionXLPipeline
-    #     elif "sd3" in model_id_lower or "stable-diffusion-3" in model_id_lower:
-    #         return StableDiffusion3Pipeline
-    #     else:
-    #     #    default to SDXL
-    #         print(f"Warning: Defaulting to StableDiffusionXLPipeline for model ID: {model_id}. If this is not an XL model, pipeline selection might be incorrect.")
-    #         return StableDiffusionXLPipeline
+    def _get_pipeline_class_for_base_model(self, base_model: str):
+        """
+        Get the appropriate pipeline class for a base model
+        """
+        if base_model == 'sd3':
+            return StableDiffusion3Pipeline
+        elif base_model in ['sd-xl', 'sdxl']:
+            return StableDiffusionXLPipeline
+        else:
+            print(f"Warning: Unknown base model '{base_model}', defaulting to StableDiffusionXLPipeline")
+            return StableDiffusionXLPipeline
 
     def initialize_model(self, model_name: str = DEFAULT_MODEL) -> Tuple[bool, str]:
         try:
-            # return early if we already have the model
-            if self._initialized and model_name == self._model_id:
+            specific_checkpoint = None
+            if ':checkpoint-' in model_name:
+                model_name, checkpoint_part = model_name.split(':checkpoint-', 1)
+                specific_checkpoint = checkpoint_part
+                print(f"Requested specific checkpoint: {specific_checkpoint}")
+            
+            if self._initialized and model_name == self._model_id and self.active_model is not None:
                 return True, "Model already initialized"
 
             self.cleanup()
             
-            # base model from config
-            if model_name in MODEL_ID_MAP:
+            if model_name == "sd3-ipadapter":
+                print("IP-Adapter model requested. Loading using local InstantX implementation...")
+                try:
+                    # based on  documentation for InstantX/SD3.5-Large-IP-Adapter
+                    model_path = "stabilityai/stable-diffusion-3.5-large"
+                    ip_adapter_path = Path.cwd() / 'temp-instantx' / 'ip-adapter.bin'
+                    image_encoder_path = "google/siglip-so400m-patch14-384"
+                    
+                    if not ip_adapter_path.exists():
+                        return False, f"IP adapter weights not found at {ip_adapter_path}"
+
+                    transformer = SD3Transformer2DModel.from_pretrained(
+                        model_path, subfolder="transformer", torch_dtype=self._dtype
+                    )
+                    
+                    pipeline = StableDiffusion3PipelineIPAdapter.from_pretrained(
+                        model_path, transformer=transformer, torch_dtype=self._dtype
+                    )
+                    
+                    pipeline.init_ipadapter(
+                        ip_adapter_path=str(ip_adapter_path), 
+                        image_encoder_path=image_encoder_path, 
+                        nb_token=64, 
+                    )
+                    
+                    if self._device == "cuda":
+                        print("Applying memory optimizations for CUDA device (CPU offload)...")
+                        pipeline.enable_model_cpu_offload()
+                    else:
+                        pipeline.to(self._device)
+                    
+                    self.active_model = pipeline
+                
+                except Exception as e:
+                    print(f"Error loading SD3.5 IP-Adapter with local files: {e}")
+                    self.cleanup()
+                    return False, f"Error loading SD3.5 IP-Adapter with local files: {e}"
+
+            elif model_name in MODEL_ID_MAP:
                 model_path = MODEL_ID_MAP[model_name]
 
-                if "xl" in model_name: 
-                    self.active_model = StableDiffusionXLPipeline.from_pretrained(
-                        model_path,
-                        torch_dtype=self._dtype,
-                        use_safetensors=True, 
-                        variant="fp16" if self._device == "cuda" else None ## ensure we are on GPU
-                    ).to(self._device)
-                else: ## sd3
-                    self.active_model = StableDiffusion3Pipeline.from_pretrained(
-                        model_path,
-                        torch_dtype=self._dtype,
-                        use_safetensors=True, 
-                        variant=None
-                    ).to(self._device)
-
-                self._model_id = model_name
-                self._initialized = True
-
-                return True, f"Successfully init {model_name} (base)"
+                load_args = {
+                    "torch_dtype": self._dtype,
+                    "use_safetensors": True,
+                }
                 
-                # self.active_model = pipeline_class.from_pretrained(
-                #     model_path,
-                #     torch_dtype=self._dtype,
-                #     use_safetensors=True, 
-                #     variant="fp16" if self._device == "cuda" and pipeline_class == StableDiffusionXLPipeline else None # variant typically for XL fp16
-                # ).to(self._device)
+                pipeline_class = None
+                if "xl" in model_name.lower(): 
+                    pipeline_class = StableDiffusionXLPipeline
+                    if self._device == "cuda":
+                        load_args["variant"] = "fp16"
+                elif "sd3" in model_name.lower():
+                    pipeline_class = StableDiffusion3Pipeline
+                else: 
+                    pipeline_class = DiffusionPipeline
+
+                print(f"Loading base model '{model_name}' with {pipeline_class.__name__}...")
+                
+                # load model on CPU first
+                pipeline = pipeline_class.from_pretrained(model_path, **load_args)
+
+                if self._device == "cuda":
+                    print("Applying memory optimizations for CUDA device (CPU offload, attention slicing)...")
+                    pipeline.enable_model_cpu_offload()
+                    pipeline.enable_attention_slicing()
+                else:
+                    pipeline.to(self._device)
+
+                self.active_model = pipeline
             
             # fine tuned model
             else:
-                local_path = FINE_TUNED_MODELS_DIR / model_name
-                if not local_path.exists():
-                    return False, f"Model {model_name} not found!"
+                model_specific_dir = Path(FINE_TUNED_MODELS_DIR) / model_name
+
+                if not model_specific_dir.exists() or not model_specific_dir.is_dir():
+                    return False, f"Fine-tuned model directory for '{model_name}' not found at '{model_specific_dir}' or is not a directory."
                 
-                is_lora, weights_path, base_model = self._find_lora_weights_in_directory(local_path)
+                is_lora, weights_path, base_model = self._find_lora_weights_in_directory(model_specific_dir, specific_checkpoint)
 
                 if is_lora:
-                    if not base_model:
-                        return False, f"LoRA Model '{model_name}' found but base model wasn't"
+                    print(f"Loading LoRA model '{model_name}' (base: {base_model}) from weights at: {weights_path}")
+                    
+                    # START TEMPORARY, REALLY BAD CODE
+                    # config is out of sync bc trained on sd3.5 and sd3, I was lazy to make a better fix
+                    if base_model == 'sd3':
+                        base_model_path = "stabilityai/stable-diffusion-3-medium-diffusers"
+                    else:
+                        base_model_path = MODEL_ID_MAP.get(base_model, base_model)
+                    # END END END 
 
-                    print(f"Loading LoRA model '{model_name}' (base: {base_model})")
-                    print(f"LoRA weights at: {weights_path}")
+                    pipeline_class = self._get_pipeline_class_for_base_model(base_model)
+                    
+                    load_args = { "torch_dtype": self._dtype, "use_safetensors": True }
+                    if self._device == "cuda" and base_model in ['sd-xl', 'sdxl']:
+                        load_args["variant"] = "fp16"
 
-                    base_model_path = MODEL_ID_MAP.get(base_model, base_model)
-
-                    # from docs
-                    self.active_model = DiffusionPipeline.from_pretrained(
-                        base_model_path,
-                        torch_dtype=self._dtype,
-                        use_safetensors=True, 
-                        variant="fp16" if self._device == "cuda" and "sdxl" in model_name else None # var
-                    ).to(self._device)
-                    self.active_model.load_lora_weights(str(weights_path))
+                    # load base on cpu, then load lora wei
+                    print(f"Loading base model '{base_model_path}' to CPU...")
+                    pipeline = pipeline_class.from_pretrained(base_model_path, **load_args)
+                    print(f"Fusing LoRA weights from '{weights_path}' on CPU...")
+                    pipeline.load_lora_weights(weights_path)
+                    
+                    # apply optimizations, move to cuda
+                    if self._device == "cuda":
+                        print("Applying memory optimizations for CUDA (CPU offload, attention slicing)...")
+                        pipeline.enable_model_cpu_offload()
+                        pipeline.enable_attention_slicing()
+                    else:
+                        pipeline.to(self._device)
+                    self.active_model = pipeline
                 
                 else:
-                    # add functionality for other FT like FFT or plain dreambooth
-                    return False, f"FFT not implemented yet"
+                    base_model = self._infer_base_model_from_name(model_name)
+                    pipeline_class = self._get_pipeline_class_for_base_model(base_model)
+                    
+                    load_args = { "torch_dtype": self._dtype, "use_safetensors": True }
+                    if self._device == "cuda" and base_model in ['sd-xl', 'sdxl']:
+                        load_args["variant"] = "fp16"
 
-                if self.active_model is None:
-                    return False, f"Failed to load model '{model_name}'"
-                
-                self._model_id = model_name
-                self._initialized = True
+                    try:
+                        # load on CPU first
+                        pipeline = pipeline_class.from_pretrained(str(model_specific_dir), **load_args)
+                        
+                        # apply optimizations
+                        if self._device == "cuda":
+                           print("Applying memory optimizations for CUDA (CPU offload, attention slicing)...")
+                           pipeline.enable_model_cpu_offload()
+                           pipeline.enable_attention_slicing()
+                        else:
+                            pipeline.to(self._device)
+                        self.active_model = pipeline
+                    except Exception as e:
+                        return False, f"Failed to load full fine-tune model '{model_name}': {str(e)}"
 
-                pipeline_type = type(self.active_model).__name__
-                print(f"Successfully loaded {pipeline_type}")
+            if self.active_model is None:
+                return False, f"Failed to load model '{model_name}'"
+            
+            self._model_id = model_name
+            self._initialized = True
 
-                return True, f"Successfully loaded {pipeline_type}"
+            pipeline_type = type(self.active_model).__name__
+            print(f"Successfully loaded {pipeline_type}")
+
+            return True, f"Successfully loaded {pipeline_type}"
             
         except Exception as e:
             self.cleanup()

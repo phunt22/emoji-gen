@@ -18,12 +18,13 @@ def main():
     parser.add_argument("--benchmark", action="store_true", help="Run in benchmark mode")  # Changed to boolean flag
     parser.add_argument("--model", type=str, default="sd-v1.5", help="Model to use for generation")
     parser.add_argument("--name", type=str, help="Name of the output folder for the benchmark")
-    
+    parser.add_argument("--rag", action="store_true", help="Use RAG for generation")
+    parser.add_argument("--llm", action="store_true", help="Use LLM to augment prompts for generation")
     args = parser.parse_args()
 
     if args.benchmark:
         name = args.name if args.name else f"benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        run_benchmark(args.model, name, args.steps, args.guidance, args.local)
+        run_benchmark(args.model, name, args.steps, args.guidance, args.local, use_llm=args.llm, use_rag=args.rag)
         return
     
     prompt = " ".join(args.prompt)
@@ -39,6 +40,8 @@ def main():
         result = generate_emoji_remote(
             prompt=prompt,
             num_inference_steps=args.steps,
+            use_rag=args.rag,
+            use_llm=args.llm,
             guidance_scale=args.guidance,
             output_path=args.output
         )
@@ -66,6 +69,8 @@ def generate_locally(prompt, args):
     result = generate_emoji(
         prompt=prompt,
         num_inference_steps=args.steps,
+        use_rag=args.rag,
+        use_llm=args.llm,
         guidance_scale=args.guidance,
         output_path=args.output
     )
@@ -79,7 +84,7 @@ def generate_locally(prompt, args):
     else:
         print(f"Generated emoji saved to: {result}")
 
-def run_benchmark(model_name, output_name, num_steps=40, guidance_scale=9, force_local=False):
+def run_benchmark(model_name, output_name, num_steps=40, guidance_scale=9, force_local=False, use_llm=False, use_rag=False):
     """Run inference on prompts from the benchmark prompts file."""
     # Create output directory structure with portable path
     benchmark_dir = Path('generated_emojis') / output_name
@@ -123,6 +128,8 @@ def run_benchmark(model_name, output_name, num_steps=40, guidance_scale=9, force
             result = generate_emoji_remote(
                 prompt=prompt,
                 num_inference_steps=num_steps,
+                use_rag=use_rag,
+                use_llm=use_llm,
                 guidance_scale=guidance_scale,
                 output_path=str(benchmark_dir)
             )
@@ -134,6 +141,8 @@ def run_benchmark(model_name, output_name, num_steps=40, guidance_scale=9, force
             result = generate_emoji(
                 prompt=prompt,
                 num_inference_steps=num_steps,
+                use_rag=use_rag,
+                use_llm=use_llm,
                 guidance_scale=guidance_scale,
                 output_path=str(benchmark_dir)
             )

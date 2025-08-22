@@ -11,3 +11,5 @@ data/
 # envs
 /venv
 .env
+
+/temp-instantx

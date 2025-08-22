@@ -1,36 +1,74 @@
-# Emoji Gen
+# Emoji Gen 🥳
 
-A project of generating emojis and fine-tuning open source models.
+[![Project Thumbnail](assets/thumbnail.png)](assets/thumbnail.png)
 
-## Installation
+A project for generating custom emojis (like these above) using fine-tuned open source diffusion models. Additionally provides CLIs for both dev and generation. I completely broke this project and abandoned it after the class was over, but while it was running it was awesome. Read the below poster and report for more info.
 
-1. Clone the repository:
+## 📚 Project Documentation
+
+- **[Project Poster](assets/poster.pdf)** - 1 page overview
+- **[Technical Report](assets/report.pdf)** - Paper on results and process
+
+## 🚨 This project is not fully complete 🚨
+
+- RAG System: Partially implemented but needs refinement, not actually used in generation yet
+- LLM Integration: Very basic implementation exists but could be improved
+- Error Handling: Some edge cases not fully handled
+- Testing: No testing lol
+- Model Validation: Fine-tuned models need validation pipeline, often drift
+- Performance Optimization: Memory management and GPU optimization very poor
+- Lot of VM specific issues
+
+## Features
+
+- Text-to-Emoji Generation: Convert text descriptions to custom emoji images
+- Multiple Model Support: SD 1.5, SDXL, and SD3 Medium
+- Fine-tuning Pipeline: DreamBooth implementation for custom emoji training
+- RAG/LLM Enhancement: Enhance prompts with LLMs and (kind of) RAG
+- Server Mode: Fast consecutive generation via Flask server
+- Benchmark Mode: Test generation quality across multiple prompts
+
+## Installation (probably will not work, project abandoned)
+
+**Setup:**
+
+1. **Clone the repository:**
 
    ```bash
    git clone https://github.com/phunt22/emoji-gen.git
    cd emoji-gen
    ```
 
-2. Create and activate a virtual environment:
+2. **Create and activate a virtual environment:**
 
    ```bash
    python -m venv venv
    source venv/bin/activate
    ```
 
-3. Install the package in development mode:
+3. **Install the package in development mode:**
    ```bash
    pip install -e .
    ```
 
 ## GCP Setup and Management
 
-0. Follow these instructions to set up your GCP VM:
-   https://rayxsong.github.io/research/2024/WI/Nera/Nera-Weekly-Update-1
+**Note: This project is designed to run on GCP VMs with GPU support.**
 
-# Keep in mind that T4 GPUs are hard to get (think about an L4, etc.) and that Spot-Instances are much cheaper and work for this project
+**VM Setup:**
 
-1. Initialize gcloud:
+Follow these instructions to set up your GCP VM:
+https://rayxsong.github.io/research/2024/WI/Nera/Nera-Weekly-Update-1
+
+**Important Notes:**
+
+- T4 GPUs are hard to get (consider L4 or other alternatives)
+- Spot instances are much cheaper and work well for this project
+- **Always stop VMs when not in use to avoid charges (I may or may not have had a learning moment)**
+
+**GCP Configuration:**
+
+1. **Initialize gcloud:**
 
    ```bash
    gcloud init
@@ -39,76 +77,79 @@ A project of generating emojis and fine-tuning open source models.
    # Select your project
    ```
 
-2. Sanity check configuration:
+2. **Verify configuration:**
 
    ```bash
    gcloud config list
    ```
 
-3. VM Management:
+3. **VM Management:**
 
    ```bash
    # List all compute instances
    gcloud compute instances list
    # RUNNING = being charged, TERMINATED = not being charged
-   # Keep in mind of the instance name, which should be the format "2025****-******"
 
-   # Stop a VM instance
-   ## IMPORTANT: If you dont stop your VMs, you will get charged a lot. Make sure to stop when you are not using.
+   # Stop a VM instance (IMPORTANT: stops billing)
    gcloud compute instances stop instance-[INSTANCE_NAME]
 
    # Start a VM instance
    gcloud compute instances start instance-[INSTANCE_NAME]
    ```
 
-4. Set up environment variables (for syncing images from VM to local):
+4. **Environment Setup:**
    Create a `.env` file in the project root on your local computer:
 
-   ```
-   # these should be obtained from
+   ```bash
+   # Get these from your GCP VM
    GCP_VM_EXTERNAL_IP=your_vm_ip
    GCP_INSTANCE_NAME=your_instance_name
 
-   # The directory on your local computer where you want generated emojis to go
+   # Local directory for syncing generated emojis
    EMOJI_LOCAL_SYNC_DIR=/path/to/local/sync/dir
    ```
 
-Note: Installation steps must be completed on the GCP VM and your local computer.
-
 ## Usage
 
-#### Note: Python virtual env must be activated
+**Note: Python virtual environment must be activated**
 
-### User CLI (emoji-gen)
+**User CLI (`emoji-gen`):**
 
 Generate custom emojis with text prompts:
 
 ```bash
 # Basic usage
-emoji-gen cat with sunglasses
+emoji-gen "cat with sunglasses"
 
 # Advanced options
-emoji-gen happy face with sunglasses --steps 30 --guidance 8.0
+emoji-gen "happy face with sunglasses" --steps 30 --guidance 8.0
 
-# You can also run a set of multiple prompts at once. Just make sure your server is started and run:
-
+# Benchmark mode (runs multiple prompts)
 emoji-gen --benchmark
 
-# To run all of the prompts in the emoji_gen/benchmarks/prompts.txt file
-# Pass in the --name [BENCHMARK_DIR_NAME] to name your output folder (otherwise is benchmark[DATETIME])
+# Custom benchmark output folder
+emoji-gen --benchmark --name my_test_run
 
+# Benchmark prompts are stored in `emoji_gen/benchmarks/prompts.txt`
+# Output goes to `generated_emojis/benchmark_[timestamp]/` by default
 
+# Use RAG enhancement
+emoji-gen "pizza slice" --rag
+
+# Use LLM prompt augmentation
+emoji-gen "happy robot" --llm
 ```
 
-Parameters:
-
-# None needed
+**Parameters:**
 
 - `--steps`: Number of inference steps (default: 25)
 - `--guidance`: Guidance scale (default: 7.5)
 - `--output`: Custom output directory
+- `--rag`: Enable RAG enhancement
+- `--llm`: Enable LLM prompt augmentation
+- `--local`: Force local generation (bypass server)
 
-### Developer CLI (emoji-dev)
+**Developer CLI (`emoji-dev`):**
 
 Manage models and fine-tuning:
 
@@ -117,112 +158,69 @@ Manage models and fine-tuning:
 emoji-dev list-models
 
 # Set active model
-emoji-dev set-model sd-v1.5
+emoji-dev set-model sd3
 
-**Note on `set-model`**: The `emoji-dev set-model [MODEL]` command can sometimes encounter memory issues on the GPU, as the server might keep the previous model in memory. Currently working on fixing.
-A more reliable approach to switch models if you encounter issues is to start (or restart) the server with the desired model preloaded:
-`$ emoji-dev start-server --model [MODEL]`
+# Start inference server
+emoji-dev start-server --model sd3
 
 # Prepare emoji dataset for training
 emoji-dev prepare
 
 # Fine-tune a model
-emoji-dev fine-tune --model sd-v1.5 --output-name my_model
-
-## More information about these flags is on the actual stable diffusion docs (https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md) but:
-Key flags for `fine-tune` include:
-*   `--model`: Base model ID or path (default: from `config.py`).
-*   `--output`: Name for the output model directory (auto-generated otherwise).
-
-* Training Parameters:*
-*   `--max-train-steps`: (default: 500)
-*   `--batch-size`: (default: 1)
-*   `--learning-rate`: (default: 1e-4)
-*   `--gradient-accumulation-steps`: (default: 4)
-*   `--lora-rank`: (default: 32)
-*   `--seed`: (default: 42)
-*   `--resolution`: Training image resolution (e.g., 512, 1024; default depends on model).
-*   `--mixed-precision`: 'no', 'fp16', 'bf16' (default: 'fp16').
-*   `--lr-scheduler`: (default: 'constant')
-*   `--lr-warmup-steps`: (default: 0)
-*   `--checkpointing-steps`: Save checkpoint every X steps.
-*   `--checkpoints-total-limit`: Max checkpoints to store (default: 2).
-
-*Prompt and Validation Parameters:*
-*   `--instance-prompt`: Your unique subject prompt (default: 'sks emoji').
-*   `--class-prompt`: Regularization prompt for the general class.
-*   `--validation-prompt`: Prompt for generating validation images.
-*   `--validation-epochs`: Run validation every X epochs.
-
-*SDXL-Specific Parameters:*
-*   `--vae-path`: Path to SDXL VAE (default: 'madebyollin/sdxl-vae-fp16-fix').
-*   `--enable-xformers`: (SDXL default: True)
-*   `--gradient-checkpointing`: (SDXL default: True)
-*   `--use-8bit-adam`: (SDXL default: True)
-
-*Output and Tracking (all False by default):*
-*   `--report-to`: 'wandb', 'tensorboard'.
-*   `--push-to-hub`: Upload to Hugging Face Hub.
-*   `--hub-model-id`: Repository ID for the Hub.
+emoji-dev fine-tune --model sd3 --output-name my_emoji_model
 
 # List fine-tuned models
 emoji-dev list-fine-tuned
 
-# Sync generated images from local machine
-# RUN THIS FROM YOUR LOCAL MACHINE
+# Sync generated images from VM to local machine
 emoji-dev sync
-
-# Start inference server
-# This makes consecutive prompts (much) faster
-emoji-dev start-server
 ```
 
-### Available Models
+**Important Note on `set-model`:**
+The `emoji-dev set-model [MODEL]` command can encounter memory issues on GPU. It's more reliable to start/restart the server with the desired model:
+
+```bash
+emoji-dev start-server --model [MODEL]
+```
+
+**Fine-tuning Parameters:**
+
+Key flags for `fine-tune` include:
+
+- `--model`: Base model ID or path (default: from `config.py`)
+- `--max-train-steps`: Training steps (default: 500)
+- `--batch-size`: Batch size (default: 1)
+- `--learning-rate`: Learning rate (default: 1e-4)
+- `--lora-rank`: LoRA rank (default: 32)
+
+For complete parameter documentation, see the [Stable Diffusion fine-tuning guide](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md).
+
+**Available Models:**
 
 Base models are defined in `emoji_gen/config.py`:
 
 ```python
 MODEL_ID_MAP = {
-    "sd-v1.5": "runwayml/stable-diffusion-v1-5",
-    # Add more models here
+    "sd3": "stabilityai/stable-diffusion-3-medium-diffusers",
+    "sd3-ipadapter": "stabilityai/stable-diffusion-3.5-large",
+    "SD-XL": "stabilityai/stable-diffusion-xl-base-1.0",
+    "sd-xl": "stabilityai/stable-diffusion-xl-base-1.0",
 }
 ```
 
+It should be fairly easy to add more, if they are compatible.
+
 Fine-tuned models are stored in the `fine_tuned_models` directory and are automatically detected by the system.
 
-## Development
+## VSCode Settings:
 
-### Code Structure
+If you think they're annoying (like I do) these to your VSCode `files.exclude`:
 
-```
-emoji-gen/
-├── emoji_gen/          # Core package
-│   ├── models/         # Model management and fine-tuning
-│   ├── data_utils/     # Dataset handling
-│   └── generation.py   # Emoji generation logic
-├── cli/               # Command-line Interfaces
-├── data/              # Dataset storage
-└── fine_tuned_models/ # Fine-tuned model storage
-```
-
-### Cleaning Python Cache
-
-Remove cache files:
-
-```bash
-# Remove __pycache__ directories
-find . -type d -name "__pycache__" -exec rm -r {} +
-
-# Remove .pyc files
-find . -name "*.pyc" -delete
-```
-
-VSCode settings to hide cache:
-
-- Add `"**/__pycache__**"` to `files:exclude`
-- Add `"**/*.egg_info"` to `files:exclude`
+- `"**/__pycache__**"`
+- `"**/*.egg_info"`
 
 ## Acknowledgments
 
-- Stable Diffusion Team
-- Evan Zhou
+- **Stable Diffusion Team** - Base models and fine-tuning techniques
+- **Evan Zhou** - Inspiration from his project, open-genmoji
+- **Hugging Face** - Diffusers library and model hosting

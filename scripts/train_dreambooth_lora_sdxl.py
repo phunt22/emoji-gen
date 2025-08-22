@@ -1638,7 +1638,8 @@ def main(args):
         initial=initial_global_step,
         desc="Steps",
         # Only show the progress bar once on each machine.
-        disable=not accelerator.is_local_main_process,
+        # disable=not accelerator.is_local_main_process,
+        disable=False ## show the bar
     )
 
     def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
