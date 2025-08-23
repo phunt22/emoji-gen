@@ -13,3 +13,4 @@ data/
 .env
 
 /temp-instantx
+.DS_Store
